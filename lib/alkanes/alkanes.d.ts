@@ -118,6 +118,38 @@ export declare const createTransactReveal: ({ protostone, receiverAddress, scrip
     psbt: string;
     fee: number;
 }>;
+export declare const actualBumpFeeFee: ({ txid, account, provider, newFeeRate, signer, }: {
+    txid: string;
+    account: Account;
+    provider: Provider;
+    newFeeRate: number;
+    signer: Signer;
+}) => Promise<{
+    fee: number;
+}>;
+export declare const createBumpFeePsbt: ({ txid, account, provider, newFeeRate, fee, }: {
+    txid: string;
+    account: Account;
+    provider: Provider;
+    newFeeRate: number;
+    fee?: number;
+}) => Promise<{
+    psbt: string;
+}>;
+export declare const bumpFee: ({ txid, newFeeRate, account, provider, signer, }: {
+    txid: string;
+    newFeeRate: number;
+    account: Account;
+    provider: Provider;
+    signer: Signer;
+}) => Promise<{
+    txId: string;
+    rawTx: string;
+    size: any;
+    weight: any;
+    fee: number;
+    satsPerVByte: string;
+}>;
 export declare const deployCommit: ({ payload, gatheredUtxos, account, provider, feeRate, signer, }: {
     payload: AlkanesPayload;
     gatheredUtxos: GatheredUtxos;

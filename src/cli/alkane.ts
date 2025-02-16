@@ -16,6 +16,7 @@ import { ProtoruneEdict } from 'alkanes/lib/protorune/protoruneedict'
 import { ProtoruneRuneId } from 'alkanes/lib/protorune/protoruneruneid'
 import { u128 } from '@magiceden-oss/runestone-lib/dist/src/integer'
 
+
 /* @dev example call
   oyl alkane trace -params '{"txid":"0322c3a2ce665485c8125cd0334675f0ddbd7d5b278936144efb108ff59c49b5","vout":0}'
 
@@ -376,6 +377,27 @@ export const alkaneSend = new Command('send')
         signer: wallet.signer,
         provider: wallet.provider,
         feeRate: wallet.feeRate,
+      })
+    )
+  })
+
+/* @dev example call
+   oyl alkane bump-fee -txid "6c17d0fc8b915aae2ce1a99b4bfd149f2ebc5e6762202a770a1329dff99ee0b1" -feeRate 5 -p regtest
+*/
+export const alkaneBumpFee = new Command('bump-fee')
+  .requiredOption('-txid, --transaction-id <txid>', 'Transaction ID to bump')
+  .option('-feeRate, --feeRate <feeRate>', 'New fee rate in sat/vB')
+  .option('-p, --provider <provider>', 'Network provider type (regtest, bitcoin)')
+  .action(async (options) => {
+    const wallet: Wallet = new Wallet(options)
+    
+    console.log(
+      await alkanes.bumpFee({
+        txid: options.transactionId.replace(/"/g, ''), // Remove quotation marks from txid
+        newFeeRate: Number(options.feeRate || wallet.feeRate),
+        account: wallet.account,
+        signer: wallet.signer,
+        provider: wallet.provider,
       })
     )
   })

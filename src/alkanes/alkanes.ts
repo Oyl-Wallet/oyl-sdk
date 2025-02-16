@@ -77,6 +77,7 @@ export const createExecutePsbt = async ({
         psbt.addInput({
           hash: gatheredUtxos.utxos[i].txId,
           index: gatheredUtxos.utxos[i].outputIndex,
+          sequence: 0xfffffffd,
           nonWitnessUtxo: Buffer.from(previousTxHex, 'hex'),
         })
       }
@@ -91,6 +92,7 @@ export const createExecutePsbt = async ({
         psbt.addInput({
           hash: gatheredUtxos.utxos[i].txId,
           index: gatheredUtxos.utxos[i].outputIndex,
+          sequence: 0xfffffffd, 
           redeemScript: redeemScript,
           witnessUtxo: {
             value: gatheredUtxos.utxos[i].satoshis,
@@ -109,6 +111,7 @@ export const createExecutePsbt = async ({
         psbt.addInput({
           hash: gatheredUtxos.utxos[i].txId,
           index: gatheredUtxos.utxos[i].outputIndex,
+          sequence: 0xfffffffd, 
           witnessUtxo: {
             value: gatheredUtxos.utxos[i].satoshis,
             script: Buffer.from(gatheredUtxos.utxos[i].scriptPk, 'hex'),
@@ -796,6 +799,151 @@ export const createTransactReveal = async ({
   } catch (error) {
     throw new OylTransactionError(error)
   }
+}
+
+export const actualBumpFeeFee = async ({
+  txid,
+  account,
+  provider,
+  newFeeRate,
+  signer,
+}: {
+  txid: string
+  account: Account
+  provider: Provider
+  newFeeRate: number
+  signer: Signer
+}) => {
+  if (!newFeeRate) {
+    newFeeRate = (await provider.esplora.getFeeEstimates())['1']
+  }
+
+  const { psbt } = await createBumpFeePsbt({
+    txid,
+    account,
+    provider,
+    newFeeRate,
+  })
+
+  const { signedPsbt } = await signer.signAllInputs({
+    rawPsbt: psbt,
+    finalize: true,
+  })
+
+  let rawPsbt = bitcoin.Psbt.fromBase64(signedPsbt, {
+    network: account.network,
+  })
+    .extractTransaction()
+    .toHex()
+
+  const vsize = (
+    await provider.sandshrew.bitcoindRpc.testMemPoolAccept([rawPsbt])
+  )[0].vsize
+
+  const correctFee = vsize * newFeeRate
+
+  return { fee: correctFee }
+}
+
+export const createBumpFeePsbt = async ({
+  txid,
+  account,
+  provider,
+  newFeeRate,
+  fee = 0,
+}: {
+  txid: string
+  account: Account
+  provider: Provider
+  newFeeRate: number
+  fee?: number
+}) => {
+  try {
+
+    const txInfo = await provider.esplora.getTxInfo(txid)
+    const txHex = await provider.esplora.getTxHex(txid)
+    const tx = bitcoin.Transaction.fromHex(txHex)
+    
+    let psbt = new bitcoin.Psbt({ network: provider.network })
+    
+
+    for (let i = 0; i < tx.ins.length; i++) {
+      const input = tx.ins[i]
+      const vin = txInfo.vin[i]
+      
+      psbt.addInput({
+        hash: input.hash.reverse().toString('hex'),
+        index: input.index,
+        sequence: 0xfffffffd,
+        witnessUtxo: {
+          script: Buffer.from(vin.prevout.scriptpubkey, 'hex'),
+          value: vin.prevout.value,
+        }
+      })
+    }
+
+
+    for (let i = 0; i < tx.outs.length - 1; i++) {
+      psbt.addOutput({
+        script: tx.outs[i].script,
+        value: tx.outs[i].value
+      })
+    }
+
+
+    const changeOutput = tx.outs[tx.outs.length - 1]
+    const finalFee = fee === 0 ? newFeeRate * tx.virtualSize() : fee
+    
+    psbt.addOutput({
+      script: changeOutput.script,
+      value: changeOutput.value - (finalFee - txInfo.fee)
+    })
+
+    return { psbt: psbt.toBase64() }
+  } catch (error) {
+    throw new OylTransactionError(error)
+  }
+}
+
+export const bumpFee = async ({
+  txid,
+  newFeeRate,
+  account,
+  provider,
+  signer,
+}: {
+  txid: string
+  newFeeRate: number
+  account: Account
+  provider: Provider
+  signer: Signer
+}) => {
+  const { fee } = await actualBumpFeeFee({
+    txid,
+    account,
+    provider,
+    newFeeRate,
+    signer,
+  })
+
+  const { psbt: finalPsbt } = await createBumpFeePsbt({
+    txid,
+    account,
+    provider,
+    newFeeRate,
+    fee,
+  })
+
+  const { signedPsbt } = await signer.signAllInputs({
+    rawPsbt: finalPsbt,
+    finalize: true,
+  })
+
+  const result = await provider.pushPsbt({
+    psbtBase64: signedPsbt,
+  })
+
+  return result
 }
 
 export const deployCommit = async ({
