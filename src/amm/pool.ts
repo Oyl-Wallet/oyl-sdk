@@ -7,19 +7,20 @@ import { AlkaneId, Utxo } from 'shared/interface'
 import { u128, u32 } from '@magiceden-oss/runestone-lib/dist/src/integer'
 import { ProtoruneEdict } from 'alkanes/lib/protorune/protoruneedict'
 import { ProtoruneRuneId } from 'alkanes/lib/protorune/protoruneruneid'
+import { splitAlkaneUtxos } from './factory'
 
 export type SwapSimulationResult = {
-  amountOut: bigint;
-};
+  amountOut: bigint
+}
 
 export type PoolDetailsResult = {
-  token0: AlkaneId;
-  token1: AlkaneId;
-  token0Amount: string;
-  token1Amount: string;
-  tokenSupply: string;
-  poolName: string;
-};
+  token0: AlkaneId
+  token1: AlkaneId
+  token0Amount: string
+  token1Amount: string
+  tokenSupply: string
+  poolName: string
+}
 
 export enum PoolOpcodes {
   INIT_POOL = 0,
@@ -33,69 +34,68 @@ export enum PoolOpcodes {
 
 export class AlkanesAMMPoolDecoder {
   decodeSwap(data: string): SwapSimulationResult | undefined {
-    if (data === '0x') return undefined;
+    if (data === '0x') return undefined
     // Convert hex to BigInt (little-endian)
-    const bytes = Buffer.from(data.slice(2), 'hex');
-    const reversed = Buffer.from([...bytes].reverse());
+    const bytes = Buffer.from(data.slice(2), 'hex')
+    const reversed = Buffer.from([...bytes].reverse())
     return {
-      amountOut: BigInt('0x' + reversed.toString('hex'))
-    };
+      amountOut: BigInt('0x' + reversed.toString('hex')),
+    }
   }
 
   decodePoolDetails(data: string): PoolDetailsResult | undefined {
-    if (data === '0x') return undefined;
-    const bytes = Buffer.from(data.slice(2), 'hex');
-    
+    if (data === '0x') return undefined
+    const bytes = Buffer.from(data.slice(2), 'hex')
+
     const token0: AlkaneId = {
       block: bytes.readBigUInt64LE(0).toString(),
-      tx: bytes.readBigUInt64LE(16).toString()
-    };
+      tx: bytes.readBigUInt64LE(16).toString(),
+    }
     const token1: AlkaneId = {
       block: bytes.readBigUInt64LE(32).toString(),
-      tx: bytes.readBigUInt64LE(48).toString()
-    };
-    
-    const token0Amount = bytes.readBigUInt64LE(64).toString();
-    const token1Amount = bytes.readBigUInt64LE(80).toString();
-    const tokenSupply = bytes.readBigUInt64LE(96).toString();
-    const poolName = Buffer.from(bytes.subarray(116)).toString('utf8');
+      tx: bytes.readBigUInt64LE(48).toString(),
+    }
 
-    return { token0, token1, token0Amount, token1Amount, tokenSupply, poolName };
+    const token0Amount = bytes.readBigUInt64LE(64).toString()
+    const token1Amount = bytes.readBigUInt64LE(80).toString()
+    const tokenSupply = bytes.readBigUInt64LE(96).toString()
+    const poolName = Buffer.from(bytes.subarray(116)).toString('utf8')
+
+    return { token0, token1, token0Amount, token1Amount, tokenSupply, poolName }
   }
 
   decodeName(data: string): string | undefined {
-    if (data === '0x') return undefined;
-    const bytes = Buffer.from(data.slice(2), 'hex');
-    return bytes.toString('utf8');
+    if (data === '0x') return undefined
+    const bytes = Buffer.from(data.slice(2), 'hex')
+    return bytes.toString('utf8')
   }
 
   static decodeSimulation(result: any, opcode: number) {
-
-    const decoder = new AlkanesAMMPoolDecoder();
-    let decoded: any;
+    const decoder = new AlkanesAMMPoolDecoder()
+    let decoded: any
     switch (opcode) {
       case PoolOpcodes.INIT_POOL:
       case PoolOpcodes.ADD_LIQUIDITY:
       case PoolOpcodes.REMOVE_LIQUIDITY:
-        throw new Error('Opcode not supported in simulation mode');
-        case PoolOpcodes.SIMULATE_SWAP:
-          decoded = decoder.decodeSwap(result.execution.data);
-          break;
+        throw new Error('Opcode not supported in simulation mode')
+      case PoolOpcodes.SIMULATE_SWAP:
+        decoded = decoder.decodeSwap(result.execution.data)
+        break
       case PoolOpcodes.NAME:
-        decoded = decoder.decodeName(result.execution.data);
-        break;
+        decoded = decoder.decodeName(result.execution.data)
+        break
       case PoolOpcodes.POOL_DETAILS:
-        decoded = decoder.decodePoolDetails(result.execution.data);
-        break;
+        decoded = decoder.decodePoolDetails(result.execution.data)
+        break
       default:
-        decoded = undefined;
+        decoded = undefined
     }
 
     if (result.status !== 0 || result.execution.error) {
-      throw new Error(result.execution.error || 'Unknown error');
+      throw new Error(result.execution.error || 'Unknown error')
     }
 
-    return decoded;
+    return decoded
   }
 }
 
@@ -110,72 +110,37 @@ export const addLiquidityPsbt = async ({
   account,
   provider,
 }: {
-  calldata: bigint[];
-  token0: AlkaneId;
-  token0Amount: bigint;
-  token1: AlkaneId;
-  token1Amount: bigint;
-  gatheredUtxos: { utxos: Utxo[]; totalAmount: number };
-  feeRate: number;
-  account: Account;
-  provider: Provider;
+  calldata: bigint[]
+  token0: AlkaneId
+  token0Amount: bigint
+  token1: AlkaneId
+  token1Amount: bigint
+  gatheredUtxos: { utxos: Utxo[]; totalAmount: number }
+  feeRate: number
+  account: Account
+  provider: Provider
 }) => {
-  let tokenUtxos: {
-    alkaneUtxos: any[]
-    totalSatoshis: number
-    totalSentToken0: number
-    totalSentToken1: number
-  }
-
-  const [token0Utxos, token1Utxos] = await Promise.all([
-    findAlkaneUtxos({
-      address: account.taproot.address,
-      greatestToLeast: false,
-      provider,
-      targetNumberOfAlkanes: Number(token0Amount),
-      alkaneId: token0,
-    }),
-    findAlkaneUtxos({
-      address: account.taproot.address,
-      greatestToLeast: false,
-      provider,
-      targetNumberOfAlkanes: Number(token1Amount),
-      alkaneId: token1,
-    }),
-  ])
-
-  tokenUtxos = {
-    alkaneUtxos: [...token0Utxos.alkaneUtxos, ...token1Utxos.alkaneUtxos],
-    totalSatoshis: token0Utxos.totalSatoshis + token1Utxos.totalSatoshis,
-    totalSentToken0: token0Utxos.totalBalanceBeingSent,
-    totalSentToken1: token1Utxos.totalBalanceBeingSent,
-  }
-
-  
-  const edicts: ProtoruneEdict[] = [
-    {
-      id: new ProtoruneRuneId(
-        u128(BigInt(token0.block)),
-        u128(BigInt(token0.tx))
-      ),
-      amount: u128(token0Amount),
-      output: u32(1),
-    },
-    {
-      id: new ProtoruneRuneId(
-        u128(BigInt(token1.block)),
-        u128(BigInt(token1.tx))
-      ),
-      amount: u128(Number(token1Amount)),
-      output: u32(1),
-    }
+  const tokens = [
+    { alkaneId: token0, amount: token0Amount },
+    { alkaneId: token1, amount: token1Amount },
   ]
+  const { edicts, alkaneUtxos, totalSatoshis } = await splitAlkaneUtxos(
+    tokens,
+    account,
+    provider
+  )
 
   const protostone: Buffer = encodeRunestoneProtostone({
     protostones: [
       ProtoStone.message({
-        protocolTag: 1n,
         edicts,
+        protocolTag: 1n,
+        pointer: 0,
+        refundPointer: 0,
+        calldata: encipher([]),
+      }),
+      ProtoStone.message({
+        protocolTag: 1n,
         pointer: 0,
         refundPointer: 0,
         calldata: encipher(calldata),
@@ -184,7 +149,7 @@ export const addLiquidityPsbt = async ({
   }).encodedRunestone
 
   const { psbt, fee } = await alkanes.executePsbt({
-    alkaneUtxos: tokenUtxos,
+    alkaneUtxos: { alkaneUtxos, totalSatoshis },
     protostone,
     gatheredUtxos,
     feeRate,
@@ -207,18 +172,28 @@ export const addLiquidity = async ({
   signer,
   provider,
 }: {
-  calldata: bigint[];
-  token0: AlkaneId;
-  token0Amount: bigint;
-  token1: AlkaneId;
-  token1Amount: bigint;
-  gatheredUtxos: { utxos: Utxo[]; totalAmount: number };
-  feeRate: number;
-  account: Account;
-  provider: Provider;
-  signer: Signer;
+  calldata: bigint[]
+  token0: AlkaneId
+  token0Amount: bigint
+  token1: AlkaneId
+  token1Amount: bigint
+  gatheredUtxos: { utxos: Utxo[]; totalAmount: number }
+  feeRate: number
+  account: Account
+  provider: Provider
+  signer: Signer
 }) => {
-  const { psbt } = await addLiquidityPsbt({ calldata, token0, token0Amount, token1, token1Amount, gatheredUtxos, feeRate, account, provider })
+  const { psbt } = await addLiquidityPsbt({
+    calldata,
+    token0,
+    token0Amount,
+    token1,
+    token1Amount,
+    gatheredUtxos,
+    feeRate,
+    account,
+    provider,
+  })
 
   const { signedPsbt } = await signer.signAllInputs({
     rawPsbt: psbt,
@@ -241,32 +216,32 @@ export const removeLiquidityPsbt = async ({
   account,
   provider,
 }: {
-  calldata: bigint[];
-  token: AlkaneId;
-  tokenAmount: bigint;
-  gatheredUtxos: { utxos: Utxo[]; totalAmount: number };
-  feeRate: number;
-  account: Account;
-  provider: Provider;
+  calldata: bigint[]
+  token: AlkaneId
+  tokenAmount: bigint
+  gatheredUtxos: { utxos: Utxo[]; totalAmount: number }
+  feeRate: number
+  account: Account
+  provider: Provider
 }) => {
   let alkaneTokenUtxos: {
     alkaneUtxos: any[]
     totalSatoshis: number
   }
 
-  const [tokenUtxos] = await Promise.all([
+  const tokenUtxos = await Promise.all([
     findAlkaneUtxos({
       address: account.taproot.address,
       greatestToLeast: false,
       provider,
       targetNumberOfAlkanes: Number(tokenAmount),
       alkaneId: token,
-    })
+    }),
   ])
 
   alkaneTokenUtxos = {
-    alkaneUtxos: [...tokenUtxos.alkaneUtxos],
-    totalSatoshis: tokenUtxos.totalSatoshis,
+    alkaneUtxos: tokenUtxos[0].alkaneUtxos,
+    totalSatoshis: tokenUtxos[0].totalSatoshis,
   }
   const edicts: ProtoruneEdict[] = [
     {
@@ -275,8 +250,8 @@ export const removeLiquidityPsbt = async ({
         u128(BigInt(token.tx))
       ),
       amount: u128(tokenAmount),
-      output: u32(1),
-    }
+      output: u32(4),
+    },
   ]
 
   const protostone: Buffer = encodeRunestoneProtostone({
@@ -291,7 +266,7 @@ export const removeLiquidityPsbt = async ({
     ],
   }).encodedRunestone
 
-  const { psbt, fee } = await alkanes.executePsbt({
+  const { psbt } = await alkanes.executePsbt({
     alkaneUtxos: alkaneTokenUtxos,
     protostone,
     gatheredUtxos,
@@ -300,7 +275,7 @@ export const removeLiquidityPsbt = async ({
     provider,
   })
 
-  return { psbt, fee }
+  return { psbt }
 }
 
 export const removeLiquidity = async ({
@@ -313,16 +288,24 @@ export const removeLiquidity = async ({
   signer,
   provider,
 }: {
-  calldata: bigint[];
-  token: AlkaneId;
-  tokenAmount: bigint;
-  gatheredUtxos: { utxos: Utxo[]; totalAmount: number };
-  feeRate: number;
-  account: Account;
-  provider: Provider;
-  signer: Signer;
+  calldata: bigint[]
+  token: AlkaneId
+  tokenAmount: bigint
+  gatheredUtxos: { utxos: Utxo[]; totalAmount: number }
+  feeRate: number
+  account: Account
+  provider: Provider
+  signer: Signer
 }) => {
-  const { psbt, fee } = await removeLiquidityPsbt({ calldata, token, tokenAmount, gatheredUtxos, feeRate, account, provider })
+  const { psbt } = await removeLiquidityPsbt({
+    calldata,
+    token,
+    tokenAmount,
+    gatheredUtxos,
+    feeRate,
+    account,
+    provider,
+  })
 
   const { signedPsbt } = await signer.signAllInputs({
     rawPsbt: psbt,
@@ -345,32 +328,32 @@ export const swapPsbt = async ({
   account,
   provider,
 }: {
-  calldata: bigint[];
-  token: AlkaneId;
-  tokenAmount: bigint;
-  gatheredUtxos: { utxos: Utxo[]; totalAmount: number };
-  feeRate: number;
-  account: Account;
-  provider: Provider;
+  calldata: bigint[]
+  token: AlkaneId
+  tokenAmount: bigint
+  gatheredUtxos: { utxos: Utxo[]; totalAmount: number }
+  feeRate: number
+  account: Account
+  provider: Provider
 }) => {
   let alkaneTokenUtxos: {
     alkaneUtxos: any[]
     totalSatoshis: number
   }
 
-  const [tokenUtxos] = await Promise.all([
+  const tokenUtxos = await Promise.all([
     findAlkaneUtxos({
       address: account.taproot.address,
       greatestToLeast: false,
       provider,
       targetNumberOfAlkanes: Number(tokenAmount),
       alkaneId: token,
-    })
+    }),
   ])
 
   alkaneTokenUtxos = {
-    alkaneUtxos: [...tokenUtxos.alkaneUtxos],
-    totalSatoshis: tokenUtxos.totalSatoshis,
+    alkaneUtxos: tokenUtxos[0].alkaneUtxos,
+    totalSatoshis: tokenUtxos[0].totalSatoshis,
   }
   const edicts: ProtoruneEdict[] = [
     {
@@ -379,8 +362,8 @@ export const swapPsbt = async ({
         u128(BigInt(token.tx))
       ),
       amount: u128(tokenAmount),
-      output: u32(1),
-    }
+      output: u32(4),
+    },
   ]
 
   const protostone: Buffer = encodeRunestoneProtostone({
@@ -395,7 +378,7 @@ export const swapPsbt = async ({
     ],
   }).encodedRunestone
 
-  const { psbt, fee } = await alkanes.executePsbt({
+  const { psbt } = await alkanes.executePsbt({
     alkaneUtxos: alkaneTokenUtxos,
     protostone,
     gatheredUtxos,
@@ -404,7 +387,7 @@ export const swapPsbt = async ({
     provider,
   })
 
-  return { psbt, fee }
+  return { psbt }
 }
 
 export const swap = async ({
@@ -417,16 +400,24 @@ export const swap = async ({
   signer,
   provider,
 }: {
-  calldata: bigint[];
-  token: AlkaneId;
-  tokenAmount: bigint;
-  gatheredUtxos: { utxos: Utxo[]; totalAmount: number };
-  feeRate: number;
-  account: Account;
-  provider: Provider;
-  signer: Signer;
+  calldata: bigint[]
+  token: AlkaneId
+  tokenAmount: bigint
+  gatheredUtxos: { utxos: Utxo[]; totalAmount: number }
+  feeRate: number
+  account: Account
+  provider: Provider
+  signer: Signer
 }) => {
-  const { psbt, fee } = await swapPsbt({ calldata, token, tokenAmount, gatheredUtxos, feeRate, account, provider })
+  const { psbt } = await swapPsbt({
+    calldata,
+    token,
+    tokenAmount,
+    gatheredUtxos,
+    feeRate,
+    account,
+    provider,
+  })
 
   const { signedPsbt } = await signer.signAllInputs({
     rawPsbt: psbt,
@@ -439,5 +430,3 @@ export const swap = async ({
 
   return pushResult
 }
-
-

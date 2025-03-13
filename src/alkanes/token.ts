@@ -44,7 +44,7 @@ export const tokenDeployment = async ({
 
   await timeout(3000)
 
-  const reveal = await  deployReveal({
+  const reveal = await deployReveal({
     protostone,
     script,
     commitTxId: txId,
@@ -125,7 +125,7 @@ export const createSendPsbt = async ({
         const previousTxHex: string = await provider.esplora.getTxHex(utxo.txId)
         psbt.addInput({
           hash: utxo.txId,
-          index: parseInt(utxo.txIndex),
+          index: utxo.txIndex,
           nonWitnessUtxo: Buffer.from(previousTxHex, 'hex'),
         })
       }
@@ -139,7 +139,7 @@ export const createSendPsbt = async ({
 
         psbt.addInput({
           hash: utxo.txId,
-          index: parseInt(utxo.txIndex),
+          index: utxo.txIndex,
           redeemScript: redeemScript,
           witnessUtxo: {
             value: utxo.satoshis,
@@ -157,7 +157,7 @@ export const createSendPsbt = async ({
       ) {
         psbt.addInput({
           hash: utxo.txId,
-          index: parseInt(utxo.txIndex),
+          index: utxo.txIndex,
           witnessUtxo: {
             value: utxo.satoshis,
             script: Buffer.from(utxo.script, 'hex'),
@@ -589,12 +589,11 @@ export const createSplitPsbt = async ({
     }
 
     for (let i = 0; i < alkaneUtxos.alkaneUtxos.length * 2; i++) {
-    psbt.addOutput({
-      address: account.taproot.address,
-      value: 546,
-    })
-  }
-    
+      psbt.addOutput({
+        address: account.taproot.address,
+        value: 546,
+      })
+    }
 
     const output = { script: protostone, value: 0 }
     psbt.addOutput(output)
@@ -609,7 +608,6 @@ export const createSplitPsbt = async ({
       address: account[account.spendStrategy.changeAddress].address,
       value: changeAmount,
     })
-
 
     const formattedPsbtTx = await formatInputsToSign({
       _psbt: psbt,

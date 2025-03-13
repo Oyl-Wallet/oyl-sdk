@@ -589,8 +589,8 @@ export const findAlkaneUtxos = async ({
     outpoint.runes
       .filter(
         (value) =>
-          value.rune.id.block === alkaneId.block &&
-          value.rune.id.tx === alkaneId.tx
+          Number(value.rune.id.block) === Number(alkaneId.block) &&
+          Number(value.rune.id.tx) === Number(alkaneId.tx)
       )
       .map((rune) => ({ rune, outpoint }))
   )
@@ -603,7 +603,14 @@ export const findAlkaneUtxos = async ({
 
   let totalSatoshis: number = 0
   let totalBalanceBeingSent: number = 0
-  const alkaneUtxos = []
+  const alkaneUtxos: {
+    txId: string
+    txIndex: number
+    script: string
+    address: string
+    amountOfAlkanes: string
+    satoshis: number
+  }[] = []
 
   for (const alkane of sortedRunesWithOutpoints) {
     if (

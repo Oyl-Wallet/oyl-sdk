@@ -85,7 +85,14 @@ export declare const findAlkaneUtxos: ({ address, greatestToLeast, provider, alk
     };
     targetNumberOfAlkanes: number;
 }) => Promise<{
-    alkaneUtxos: any[];
+    alkaneUtxos: {
+        txId: string;
+        txIndex: number;
+        script: string;
+        address: string;
+        amountOfAlkanes: string;
+        satoshis: number;
+    }[];
     totalSatoshis: number;
     totalBalanceBeingSent: number;
 }>;
