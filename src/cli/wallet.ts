@@ -14,7 +14,8 @@ export interface WalletOptions {
   mnemonic?: string
   networkType?: NetworkType
   feeRate?: number
-  provider?: Provider
+  provider?: Provider | string
+  metashrewRpcUrl?: string  // Add this parameter
 }
 
 export class Wallet {
@@ -29,10 +30,46 @@ export class Wallet {
     this.mnemonic =
       options?.mnemonic || process.env.MNEMONIC || TEST_WALLET.mnemonic
     this.networkType = options?.networkType || 'regtest'
-    if (options.provider && typeof options.provider == 'string')
-      this.provider = DEFAULT_PROVIDER[options?.provider]
-    else if (options.provider) this.provider = options.provider
-    else this.provider = DEFAULT_PROVIDER[this.networkType]
+    
+    if (options?.provider && typeof options.provider === 'string') {
+      // If a provider name is specified, get the default provider
+      const defaultProvider = DEFAULT_PROVIDER[options.provider]
+      
+      if (options.metashrewRpcUrl) {
+        // If metashrewRpcUrl is provided, create a new provider with it
+        this.provider = new Provider({
+          url: defaultProvider.url,
+          projectId: defaultProvider.projectId || '',
+          network: defaultProvider.network,
+          networkType: defaultProvider.networkType,
+          version: defaultProvider.version,
+          metashrewRpcUrl: options.metashrewRpcUrl
+        })
+      } else {
+        this.provider = defaultProvider
+      }
+    } else if (options?.provider) {
+      // If a provider instance is provided, use it directly
+      this.provider = options.provider as Provider
+    } else {
+      // Use the default provider for the network type
+      const defaultProvider = DEFAULT_PROVIDER[this.networkType]
+      
+      if (options?.metashrewRpcUrl) {
+        // If metashrewRpcUrl is provided, create a new provider with it
+        this.provider = new Provider({
+          url: defaultProvider.url,
+          projectId: defaultProvider.projectId || '',
+          network: defaultProvider.network,
+          networkType: defaultProvider.networkType,
+          version: defaultProvider.version,
+          metashrewRpcUrl: options.metashrewRpcUrl
+        })
+      } else {
+        this.provider = defaultProvider
+      }
+    }
+    
     this.account = mnemonicToAccount({
       mnemonic: this.mnemonic,
       opts: {

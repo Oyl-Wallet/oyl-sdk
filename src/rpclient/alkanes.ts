@@ -1,9 +1,48 @@
 import fetch from 'node-fetch'
 import asyncPool from 'tiny-async-pool'
 import { EsploraRpc, EsploraUtxo } from './esplora'
+import { AlkanesRpc as AlkanesRpcLib } from 'alkanes/lib/rpc'
 
 export const stripHexPrefix = (s: string): string =>
   s.substr(0, 2) === '0x' ? s.substr(2) : s
+
+// Helper function to convert BigInt values to hex strings for JSON serialization
+export function mapToPrimitives(v: any): any {
+  switch (typeof v) {
+    case "bigint":
+      return "0x" + v.toString(16);
+    case "object":
+      if (v === null) return null;
+      if (Buffer.isBuffer(v)) return "0x" + v.toString("hex");
+      if (Array.isArray(v)) return v.map((v) => mapToPrimitives(v));
+      return Object.fromEntries(
+        Object.entries(v).map(([key, value]) => [key, mapToPrimitives(value)]),
+      );
+    default:
+      return v;
+  }
+}
+
+// Helper function to convert hex strings back to BigInt values
+export function unmapFromPrimitives(v: any): any {
+  switch (typeof v) {
+    case "string":
+      if (v !== '0x' && !isNaN(v as any)) return BigInt(v);
+      if (v.substr(0, 2) === "0x" || /^[0-9a-f]+$/.test(v)) return Buffer.from(stripHexPrefix(v), "hex");
+      return v;
+    case "object":
+      if (v === null) return null;
+      if (Array.isArray(v)) return v.map((item) => unmapFromPrimitives(item));
+      return Object.fromEntries(
+        Object.entries(v).map(([key, value]) => [
+          key,
+          unmapFromPrimitives(value),
+        ]),
+      );
+    default:
+      return v;
+  }
+}
 
 export interface Rune {
   rune: {
@@ -69,13 +108,48 @@ const opcodesHRV: string[] = [
 export class AlkanesRpc {
   public alkanesUrl: string
   public esplora: EsploraRpc
+  private metashrewUrl: string | null
 
-  constructor(url: string) {
+  constructor(url: string, metashrewUrl?: string) {
     this.alkanesUrl = url
     this.esplora = new EsploraRpc(url)
+    this.metashrewUrl = metashrewUrl || null
   }
 
   async _call(method: string, params = []) {
+    // If metashrewUrl is provided, use AlkanesRpcLib directly
+    if (this.metashrewUrl) {
+      const split = method.split('_')
+      
+      // Create an instance of AlkanesRpcLib with the metashrew URL
+      const alkanesRpc = new AlkanesRpcLib({
+        baseUrl: this.metashrewUrl,
+      });
+      
+      try {
+        let result;
+        
+        // Convert params to the format expected by AlkanesRpcLib
+        const convertedParams = params.map(param => unmapFromPrimitives(param));
+        
+        if (split.length === 1) {
+          // If no namespace is provided, call the method directly
+          result = await alkanesRpc[method](...convertedParams);
+        } else if (split[0] === 'alkanes') {
+          // If the namespace is 'alkanes', call the method without the namespace
+          result = await alkanesRpc[split[1]](...convertedParams);
+        }
+        
+        // Convert the result back to a format that can be serialized to JSON
+        return mapToPrimitives(result);
+      } catch (error) {
+        console.error('AlkanesRpcLib Error:', error);
+        throw error;
+      }
+    }
+
+    // If metashrewUrl is not provided or the method doesn't match the expected format,
+    // use the regular JSON-RPC call
     const requestData = {
       jsonrpc: '2.0',
       method: method,

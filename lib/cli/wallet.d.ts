@@ -5,7 +5,8 @@ export interface WalletOptions {
     mnemonic?: string;
     networkType?: NetworkType;
     feeRate?: number;
-    provider?: Provider;
+    provider?: Provider | string;
+    metashrewRpcUrl?: string;
 }
 export declare class Wallet {
     mnemonic: string;

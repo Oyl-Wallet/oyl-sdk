@@ -10,6 +10,7 @@ export type ProviderConstructorArgs = {
     networkType: 'signet' | 'mainnet' | 'testnet' | 'regtest';
     version?: string;
     apiProvider?: any;
+    metashrewRpcUrl?: string;
 };
 export declare class Provider {
     sandshrew: SandshrewBitcoinClient;
@@ -20,7 +21,7 @@ export declare class Provider {
     network: bitcoin.networks.Network;
     networkType: string;
     url: string;
-    constructor({ url, projectId, network, networkType, version, apiProvider, }: ProviderConstructorArgs);
+    constructor({ url, projectId, network, networkType, version, apiProvider, metashrewRpcUrl, }: ProviderConstructorArgs);
     pushPsbt({ psbtHex, psbtBase64, }: {
         psbtHex?: string;
         psbtBase64?: string;

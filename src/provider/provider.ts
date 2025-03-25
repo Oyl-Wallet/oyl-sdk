@@ -12,8 +12,8 @@ export type ProviderConstructorArgs = {
   networkType: 'signet' | 'mainnet' | 'testnet' | 'regtest'
   version?: string
   apiProvider?: any
+  metashrewRpcUrl?: string  // Add this new parameter
 }
-
 
 
 export class Provider {
@@ -31,8 +31,9 @@ export class Provider {
     projectId,
     network,
     networkType,
-    version = 'v1',
+    version,
     apiProvider,
+    metashrewRpcUrl,  // Add this parameter
   }: ProviderConstructorArgs) {
     let isTestnet: boolean
     let isRegtest: boolean
@@ -44,7 +45,7 @@ export class Provider {
         isRegtest = true
     }
     const masterUrl = [url, version, projectId].filter(Boolean).join('/');
-    this.alkanes = new AlkanesRpc(masterUrl)
+    this.alkanes = new AlkanesRpc(masterUrl, metashrewRpcUrl)  // Pass metashrewRpcUrl
     this.sandshrew = new SandshrewBitcoinClient(masterUrl)
     this.esplora = new EsploraRpc(masterUrl)
     this.ord = new OrdRpc(masterUrl)
