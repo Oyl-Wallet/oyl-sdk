@@ -784,3 +784,46 @@ export const alkaneGetAllPoolsDetails = new AlkanesCommand(
 
     console.log(JSON.stringify(allPoolsDetails, null, 2))
   })
+
+/* @dev example call
+ oyl alkane preview-remove-liquidity -token "2:1" -amount 1000000
+
+ Previews the tokens that would be received when removing liquidity from a pool
+*/
+export const alkanePreviewRemoveLiquidity = new AlkanesCommand('preview-remove-liquidity')
+  .requiredOption(
+    '-token, --token <token>',
+    'LP token ID in the format block:tx',
+    (value) => {
+      const [block, tx] = value.split(':').map((part) => part.trim())
+      return { block: block.toString(), tx: tx.toString() }
+    }
+  )
+  .requiredOption(
+    '-amount, --amount <amount>',
+    'Amount of LP tokens to remove',
+    (value) => BigInt(value)
+  )
+  .option(
+    '-p, --provider <provider>',
+    'Network provider type (regtest, bitcoin)'
+  )
+  .action(async (options) => {
+    const wallet: Wallet = new Wallet(options)
+
+    try {
+      const previewResult = await wallet.provider.alkanes.previewRemoveLiquidity({
+        token: options.token,
+        tokenAmount: options.amount,
+      })
+
+      console.log(JSON.stringify({
+        token0: `${previewResult.token0.block}:${previewResult.token0.tx}`,
+        token1: `${previewResult.token1.block}:${previewResult.token1.tx}`,
+        token0Amount: previewResult.token0Amount.toString(),
+        token1Amount: previewResult.token1Amount.toString(),
+      }, null, 2))
+    } catch (error) {
+      console.error('Error previewing liquidity removal:', error.message)
+    }
+  })

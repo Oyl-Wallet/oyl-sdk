@@ -2,6 +2,13 @@ import fetch from 'node-fetch'
 import asyncPool from 'tiny-async-pool'
 import { EsploraRpc, EsploraUtxo } from './esplora'
 import * as alkanes_rpc from 'alkanes/lib/rpc'
+import { AlkaneId } from 'shared/interface'
+import {
+  estimateRemoveLiquidityAmounts,
+  RemoveLiquidityPreviewResult,
+  PoolOpcodes,
+} from '../amm/utils'
+import { AlkanesAMMPoolDecoder } from '../amm/pool'
 
 export class MetashrewOverride {
   public override: any
@@ -369,6 +376,35 @@ export class AlkanesRpc {
     const parsedPool = this.parsePoolInfo(ret.execution.data)
     ret.parsed = parsedPool
     return ret
+  }
+
+  /**
+   * Previews the tokens that would be received when removing liquidity from a pool
+   * @param token The LP token ID
+   * @param tokenAmount The amount of LP tokens to remove
+   * @returns A promise that resolves to the preview result containing token amounts
+   */
+  async previewRemoveLiquidity({
+    token,
+    tokenAmount,
+  }: {
+    token: AlkaneId
+    tokenAmount: bigint
+  }): Promise<RemoveLiquidityPreviewResult> {
+    const poolDetailsRequest = {
+      target: token,
+      inputs: [PoolOpcodes.POOL_DETAILS.toString()],
+    }
+
+    const detailsResult = await this.simulate(poolDetailsRequest)
+    const decoder = new AlkanesAMMPoolDecoder()
+    const poolDetails = decoder.decodePoolDetails(detailsResult.execution.data)
+
+    if (!poolDetails) {
+      throw new Error('Failed to get pool details')
+    }
+
+    return estimateRemoveLiquidityAmounts(poolDetails, tokenAmount)
   }
 
   async getAlkanesByOutpoint({

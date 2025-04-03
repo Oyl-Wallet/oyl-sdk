@@ -8,28 +8,15 @@ import { u128, u32 } from '@magiceden-oss/runestone-lib/dist/src/integer'
 import { ProtoruneEdict } from 'alkanes/lib/protorune/protoruneedict'
 import { ProtoruneRuneId } from 'alkanes/lib/protorune/protoruneruneid'
 import { splitAlkaneUtxos } from './factory'
+import {
+  PoolDetailsResult,
+  RemoveLiquidityPreviewResult,
+  PoolOpcodes,
+  estimateRemoveLiquidityAmounts,
+} from './utils'
 
 export type SwapSimulationResult = {
   amountOut: bigint
-}
-
-export type PoolDetailsResult = {
-  token0: AlkaneId
-  token1: AlkaneId
-  token0Amount: string
-  token1Amount: string
-  tokenSupply: string
-  poolName: string
-}
-
-export enum PoolOpcodes {
-  INIT_POOL = 0,
-  ADD_LIQUIDITY = 1,
-  REMOVE_LIQUIDITY = 2,
-  SWAP = 3,
-  SIMULATE_SWAP = 4,
-  NAME = 99,
-  POOL_DETAILS = 999,
 }
 
 export class AlkanesAMMPoolDecoder {
@@ -77,7 +64,9 @@ export class AlkanesAMMPoolDecoder {
       case PoolOpcodes.INIT_POOL:
       case PoolOpcodes.ADD_LIQUIDITY:
       case PoolOpcodes.REMOVE_LIQUIDITY:
-        throw new Error('Opcode not supported in simulation mode')
+        throw new Error(
+          'Opcode not supported in simulation mode; see previewRemoveLiquidity'
+        )
       case PoolOpcodes.SIMULATE_SWAP:
         decoded = decoder.decodeSwap(result.execution.data)
         break
@@ -205,6 +194,38 @@ export const addLiquidity = async ({
   })
 
   return pushResult
+}
+
+/**
+ * Estimates the tokens that would be received when removing liquidity from a pool
+ * @param token The LP token ID
+ * @param tokenAmount The amount of LP tokens to remove
+ * @param provider The provider instance
+ * @returns A promise that resolves to the preview result containing token amounts
+ */
+export const previewRemoveLiquidity = async ({
+  token,
+  tokenAmount,
+  provider,
+}: {
+  token: AlkaneId
+  tokenAmount: bigint
+  provider: Provider
+}): Promise<RemoveLiquidityPreviewResult> => {
+  const poolDetailsRequest = {
+    target: token,
+    inputs: [PoolOpcodes.POOL_DETAILS.toString()],
+  }
+
+  const detailsResult = await provider.alkanes.simulate(poolDetailsRequest)
+  const decoder = new AlkanesAMMPoolDecoder()
+  const poolDetails = decoder.decodePoolDetails(detailsResult.execution.data)
+
+  if (!poolDetails) {
+    throw new Error('Failed to get pool details')
+  }
+
+  return estimateRemoveLiquidityAmounts(poolDetails, tokenAmount)
 }
 
 export const removeLiquidityPsbt = async ({

@@ -3,7 +3,7 @@
 import { ProtoruneEdict } from 'alkanes/lib/protorune/protoruneedict';
 import { Account, Provider, Signer } from '..';
 import { AlkaneId, GatheredUtxos, Utxo } from 'shared/interface';
-import { PoolDetailsResult } from './pool';
+import { PoolDetailsResult } from './utils';
 export type CreateNewPoolSimulationResult = {
     lpTokens: string;
     alkaneId: AlkaneId;

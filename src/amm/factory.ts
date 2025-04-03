@@ -19,7 +19,8 @@ import { AlkaneId, GatheredUtxos, Utxo } from 'shared/interface'
 import * as bitcoin from 'bitcoinjs-lib'
 import { getEstimatedFee } from '../psbt'
 import { minimumFee } from '../btc'
-import { AlkanesAMMPoolDecoder, PoolDetailsResult, PoolOpcodes } from './pool'
+import { AlkanesAMMPoolDecoder } from './pool'
+import { PoolDetailsResult, PoolOpcodes } from './utils'
 
 export type CreateNewPoolSimulationResult = {
   lpTokens: string

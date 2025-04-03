@@ -1,25 +1,9 @@
 import { Account, Provider, Signer } from '..';
 import { AlkaneId, Utxo } from 'shared/interface';
+import { PoolDetailsResult, RemoveLiquidityPreviewResult } from './utils';
 export type SwapSimulationResult = {
     amountOut: bigint;
 };
-export type PoolDetailsResult = {
-    token0: AlkaneId;
-    token1: AlkaneId;
-    token0Amount: string;
-    token1Amount: string;
-    tokenSupply: string;
-    poolName: string;
-};
-export declare enum PoolOpcodes {
-    INIT_POOL = 0,
-    ADD_LIQUIDITY = 1,
-    REMOVE_LIQUIDITY = 2,
-    SWAP = 3,
-    SIMULATE_SWAP = 4,
-    NAME = 99,
-    POOL_DETAILS = 999
-}
 export declare class AlkanesAMMPoolDecoder {
     decodeSwap(data: string): SwapSimulationResult | undefined;
     decodePoolDetails(data: string): PoolDetailsResult | undefined;
@@ -65,6 +49,18 @@ export declare const addLiquidity: ({ calldata, token0, token0Amount, token1, to
     fee: number;
     satsPerVByte: string;
 }>;
+/**
+ * Estimates the tokens that would be received when removing liquidity from a pool
+ * @param token The LP token ID
+ * @param tokenAmount The amount of LP tokens to remove
+ * @param provider The provider instance
+ * @returns A promise that resolves to the preview result containing token amounts
+ */
+export declare const previewRemoveLiquidity: ({ token, tokenAmount, provider, }: {
+    token: AlkaneId;
+    tokenAmount: bigint;
+    provider: Provider;
+}) => Promise<RemoveLiquidityPreviewResult>;
 export declare const removeLiquidityPsbt: ({ calldata, token, tokenAmount, gatheredUtxos, feeRate, account, provider, }: {
     calldata: bigint[];
     token: AlkaneId;

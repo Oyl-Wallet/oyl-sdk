@@ -1,4 +1,6 @@
 import { EsploraRpc } from './esplora';
+import { AlkaneId } from 'shared/interface';
+import { RemoveLiquidityPreviewResult } from '../amm/utils';
 export declare class MetashrewOverride {
     override: any;
     constructor();
@@ -99,6 +101,16 @@ export declare class AlkanesRpc {
     };
     simulate(request: Partial<AlkaneSimulateRequest>, decoder?: any): Promise<any>;
     simulatePoolInfo(request: AlkaneSimulateRequest): Promise<any>;
+    /**
+     * Previews the tokens that would be received when removing liquidity from a pool
+     * @param token The LP token ID
+     * @param tokenAmount The amount of LP tokens to remove
+     * @returns A promise that resolves to the preview result containing token amounts
+     */
+    previewRemoveLiquidity({ token, tokenAmount, }: {
+        token: AlkaneId;
+        tokenAmount: bigint;
+    }): Promise<RemoveLiquidityPreviewResult>;
     getAlkanesByOutpoint({ txid, vout, protocolTag, height, }: {
         txid: string;
         vout: number;
