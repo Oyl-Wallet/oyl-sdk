@@ -99,7 +99,7 @@ export declare const removeLiquidity: ({ calldata, token, tokenAmount, gatheredU
     fee: number;
     satsPerVByte: string;
 }>;
-export declare const swapPsbt: ({ calldata, token, tokenAmount, gatheredUtxos, feeRate, account, provider, }: {
+export declare const swapPsbt: ({ calldata, token, tokenAmount, gatheredUtxos, feeRate, account, provider, frontendFee, feeAddress, }: {
     calldata: bigint[];
     token: AlkaneId;
     tokenAmount: bigint;
@@ -110,10 +110,12 @@ export declare const swapPsbt: ({ calldata, token, tokenAmount, gatheredUtxos, f
     feeRate: number;
     account: Account;
     provider: Provider;
+    frontendFee?: number;
+    feeAddress?: string;
 }) => Promise<{
     psbt: string;
 }>;
-export declare const swap: ({ calldata, token, tokenAmount, gatheredUtxos, feeRate, account, signer, provider, }: {
+export declare const swap: ({ calldata, token, tokenAmount, gatheredUtxos, feeRate, account, signer, provider, frontendFee, feeAddress, }: {
     calldata: bigint[];
     token: AlkaneId;
     tokenAmount: bigint;
@@ -125,6 +127,8 @@ export declare const swap: ({ calldata, token, tokenAmount, gatheredUtxos, feeRa
     account: Account;
     provider: Provider;
     signer: Signer;
+    frontendFee?: number;
+    feeAddress?: string;
 }) => Promise<{
     txId: string;
     rawTx: string;

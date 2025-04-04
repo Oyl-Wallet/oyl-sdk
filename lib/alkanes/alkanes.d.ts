@@ -12,7 +12,9 @@ export interface ProtostoneMessage {
     calldata: bigint[];
 }
 export declare const encodeProtostone: ({ protocolTag, edicts, pointer, refundPointer, calldata, }: ProtostoneMessage) => Buffer;
-export declare const createExecutePsbt: ({ alkaneUtxos, gatheredUtxos, account, protostone, provider, feeRate, fee, }: {
+export declare const createExecutePsbt: ({ frontendFee, feeAddress, alkaneUtxos, gatheredUtxos, account, protostone, provider, feeRate, fee, }: {
+    frontendFee?: number;
+    feeAddress?: string;
     alkaneUtxos?: {
         alkaneUtxos: any[];
         totalSatoshis: number;
@@ -117,7 +119,7 @@ export declare const actualTransactRevealFee: ({ protostone, tweakedPublicKey, c
     fee: number;
     vsize: number;
 }>;
-export declare const actualExecuteFee: ({ gatheredUtxos, account, protostone, provider, feeRate, alkaneUtxos, }: {
+export declare const actualExecuteFee: ({ gatheredUtxos, account, protostone, provider, feeRate, alkaneUtxos, frontendFee, feeAddress, }: {
     gatheredUtxos: GatheredUtxos;
     account: Account;
     protostone: Buffer;
@@ -127,11 +129,13 @@ export declare const actualExecuteFee: ({ gatheredUtxos, account, protostone, pr
         alkaneUtxos: any[];
         totalSatoshis: number;
     };
+    frontendFee?: number;
+    feeAddress?: string;
 }) => Promise<{
     fee: number;
     vsize: number;
 }>;
-export declare const executePsbt: ({ alkaneUtxos, gatheredUtxos, account, protostone, provider, feeRate, }: {
+export declare const executePsbt: ({ alkaneUtxos, gatheredUtxos, account, protostone, provider, feeRate, frontendFee, feeAddress, }: {
     alkaneUtxos?: {
         alkaneUtxos: any[];
         totalSatoshis: number;
@@ -141,11 +145,13 @@ export declare const executePsbt: ({ alkaneUtxos, gatheredUtxos, account, protos
     protostone: Buffer;
     provider: Provider;
     feeRate?: number;
+    frontendFee?: number;
+    feeAddress?: string;
 }) => Promise<{
     psbt: string;
     fee: number;
 }>;
-export declare const execute: ({ alkaneUtxos, gatheredUtxos, account, protostone, provider, feeRate, signer, }: {
+export declare const execute: ({ alkaneUtxos, gatheredUtxos, account, protostone, provider, feeRate, signer, frontendFee, feeAddress, }: {
     alkaneUtxos?: {
         alkaneUtxos: any[];
         totalSatoshis: number;
@@ -156,6 +162,8 @@ export declare const execute: ({ alkaneUtxos, gatheredUtxos, account, protostone
     provider: Provider;
     feeRate?: number;
     signer: Signer;
+    frontendFee?: number;
+    feeAddress?: string;
 }) => Promise<{
     txId: string;
     rawTx: string;

@@ -139,8 +139,6 @@ describe('Signer', () => {
       network,
     }).address
 
-    console.log(address)
-
     const signedMessage = await signer.signMessage({
       message,
       address,
