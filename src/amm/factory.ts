@@ -574,6 +574,10 @@ export const poolPsbt = async ({
       finalFee -
       546
 
+    throw new OylTransactionError(
+      new Error('The change amount is ' + changeAmount)
+    )
+
     psbt.addOutput({
       address: account[account.spendStrategy.changeAddress].address,
       value: changeAmount,

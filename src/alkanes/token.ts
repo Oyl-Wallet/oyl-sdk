@@ -604,6 +604,10 @@ export const createSplitPsbt = async ({
       finalFee -
       546 * alkaneUtxos.alkaneUtxos.length * 2
 
+    throw new OylTransactionError(
+      new Error('The change amount is ' + changeAmount)
+    )
+
     psbt.addOutput({
       address: account[account.spendStrategy.changeAddress].address,
       value: changeAmount,
