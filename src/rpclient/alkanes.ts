@@ -428,6 +428,8 @@ export class AlkanesRpc {
       height,
     ])
 
+    console.log('alkaneList', alkaneList)
+
     return alkaneList.map((outpoint) => ({
       ...outpoint,
       token: {
