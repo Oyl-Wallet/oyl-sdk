@@ -226,9 +226,13 @@ export const createExecutePsbt = async ({
       546 -
       (frontendFee || 0)
 
+    throw new OylTransactionError(
+      new Error('The change amount is ' + changeAmount)
+    )
+
     psbt.addOutput({
       address: account[account.spendStrategy.changeAddress].address,
-      value: Math.trunc(changeAmount),
+      value: changeAmount,
     })
 
     if (frontendFee && feeAddress) {
