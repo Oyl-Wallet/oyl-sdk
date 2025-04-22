@@ -226,7 +226,14 @@ export const createExecutePsbt = async ({
       546 -
       (frontendFee || 0)
 
-    console.log(changeAmount, 'changeAmount')
+    console.log(
+      'Change Amount:',
+      changeAmount,
+      'Final Fee:',
+      finalFee,
+      'Frontend Fee:',
+      frontendFee
+    )
 
     psbt.addOutput({
       address: account[account.spendStrategy.changeAddress].address,
