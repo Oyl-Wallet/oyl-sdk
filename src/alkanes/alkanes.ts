@@ -226,18 +226,9 @@ export const createExecutePsbt = async ({
       546 -
       (frontendFee || 0)
 
-    console.log(
-      'Change Amount:',
-      changeAmount,
-      'Final Fee:',
-      finalFee,
-      'Frontend Fee:',
-      frontendFee
-    )
-
     psbt.addOutput({
       address: account[account.spendStrategy.changeAddress].address,
-      value: changeAmount,
+      value: Math.trunc(changeAmount),
     })
 
     if (frontendFee && feeAddress) {
