@@ -2,7 +2,7 @@
 
 # Oyl Sdk
 
-> A comphrenesive sdk that features easy to use bitcoin functions to build and brodcast btc transactions.
+> A comprehensive sdk that features easy to use bitcoin functions to build and broadcast btc transactions.
 
 ## Table of contents
 
@@ -61,7 +61,7 @@ You can also link the package so it updates as you make local changes:
 $ yarn link
 ```
 
-If you want the program to be isolated to only this enviornment use the local script provided to you like this:
+If you want the program to be isolated to only this environment use the local script provided to you like this:
 
 ```sh
 $ yarn oyl --help
