@@ -104,3 +104,34 @@ See also the list of [contributors](https://github.com/oyl-wallet/oyl-sdk/contri
 ## License
 
 [MIT License](https://github.com/Oyl-Wallet/oyl-sdk/blob/main/LICENSE)
+
+## Contract Tools Subproject
+
+The `contract-tools` subproject, located in the `contract-tools/` directory, provides a backend API service designed to facilitate the deployment and interaction with Wasm-based smart contracts on the OYL network.
+
+It offers endpoints for:
+- Pre-deploying contracts (calculating costs and generating PSBTs for user signing).
+- Deploying Wasm contracts.
+- Executing methods on already deployed contracts.
+
+### Running Contract Tools
+
+To run the contract tools service:
+
+1.  Navigate to the subproject directory:
+    ```bash
+    cd contract-tools
+    ```
+2.  Install its dependencies:
+    ```bash
+    npm install
+    # or
+    # yarn install
+    ```
+3.  Start the development server:
+    ```bash
+    npm run dev
+    ```
+    This will typically start the service on `http://localhost:3000`.
+
+For detailed information about the API endpoints and their usage, please refer to the [Contract Tools README](./contract-tools/README.md).

@@ -1,0 +1,28 @@
+{
+  "name": "@oyl/contract-tools",
+  "version": "1.0.0",
+  "description": "This subproject provides a backend API service for deploying and interacting with Wasm contracts on the OYL network.",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "start": "node lib/index.js",
+    "dev": "ts-node src/index.ts",
+    "test": "jest"
+  },
+  "dependencies": {
+    "express": "^4.17.0",
+    "oylsdk": "file:../"
+  },
+  "devDependencies": {
+    "typescript": "^4.0.0",
+    "ts-node": "^10.0.0",
+    "@types/express": "^4.17.0",
+    "@types/jest": "^27.0.0",
+    "jest": "^27.0.0",
+    "ts-jest": "^27.0.0"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
