@@ -19,6 +19,7 @@ import { u128 } from '@magiceden-oss/runestone-lib/dist/src/integer'
 import { createNewPool } from '../amm/factory'
 import { removeLiquidity, addLiquidity, swap } from '../amm/pool'
 import { packUTF8 } from '../shared/utils'
+import { AccountUtxoPortfolio, FormattedUtxo } from '../utxo/types'
 /* @dev example call
   oyl alkane trace -params '{"txid":"e6561c7a8f80560c30a113c418bb56bde65694ac2b309a68549f35fdf2e785cb","vout":0}'
 
@@ -801,3 +802,51 @@ export const alkanePreviewRemoveLiquidity = new AlkanesCommand(
       console.error('Error previewing liquidity removal:', error.message)
     }
   })
+
+export const alkaneList = new AlkanesCommand('list')
+  .description('Lists all Alkanes assets owned by the account.')
+  .option(
+    '-p, --provider <provider>',
+    'Network provider type (regtest, bitcoin)',
+    'bitcoin',
+  )
+  .action(async (options) => {
+    const wallet: Wallet = new Wallet({ networkType: options.provider });
+    const accountPortfolio: AccountUtxoPortfolio = await utxo.accountUtxos({
+      account: wallet.account,
+      provider: wallet.provider,
+    });
+
+    console.log(`Listing Alkanes for account derived from mnemonic (Provider: ${options.provider}):`);
+    let foundAlkanes = false;
+
+    const allUtxos: FormattedUtxo[] = [];
+    for (const addressType in accountPortfolio.accounts) {
+      if (Object.prototype.hasOwnProperty.call(accountPortfolio.accounts, addressType)) {
+        allUtxos.push(...accountPortfolio.accounts[addressType].utxos);
+      }
+    }
+    
+    if (accountPortfolio.accountUtxos && accountPortfolio.accountUtxos.length > 0) {
+      accountPortfolio.accountUtxos.forEach((utxoItem: FormattedUtxo) => {
+        if (utxoItem.alkanes && Object.keys(utxoItem.alkanes).length > 0) {
+          foundAlkanes = true;
+          console.log(`
+  UTXO: ${utxoItem.txId}:${utxoItem.outputIndex} (Address: ${utxoItem.address})`);
+          for (const alkaneId in utxoItem.alkanes) {
+            if (Object.prototype.hasOwnProperty.call(utxoItem.alkanes, alkaneId)) {
+              const alkaneDetails = utxoItem.alkanes[alkaneId];
+              console.log(`    - Alkane ID: ${alkaneId}`);
+              console.log(`      Name: ${alkaneDetails.name}`);
+              console.log(`      Symbol: ${alkaneDetails.symbol}`);
+              console.log(`      Amount/Value: ${alkaneDetails.value}`);
+            }
+          }
+        }
+      });
+    }
+
+    if (!foundAlkanes) {
+      console.log('  No Alkanes assets found for this account.');
+    }
+  });
