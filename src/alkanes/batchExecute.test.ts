@@ -7,6 +7,7 @@ import { encodeRunestoneProtostone } from 'alkanes/lib/protorune/proto_runestone
 import { ProtoStone } from 'alkanes/lib/protorune/protostone'
 import { FormattedUtxo } from '../utxo'
 import { Signer } from '../signer'
+import * as utxo from '../utxo/utxo'
 
 // Test setup
 const provider = new Provider({
@@ -71,6 +72,83 @@ describe('batchExecute', () => {
 
   beforeEach(() => {
     jest.clearAllMocks()
+    
+    // Mock accountUtxos to return different UTXOs for each account
+    jest.spyOn(utxo, 'accountUtxos').mockImplementation(async ({ account }) => {
+      // Create unique UTXOs for each account based on its address
+      // Generate a proper 32-byte hex string for txId
+      const accountIndex = account.taproot.address.slice(-4) // Get last 4 chars as identifier
+      const uniqueTxId = accountIndex.padEnd(64, '0').replace(/[^0-9a-f]/gi, '0') // Replace non-hex chars with 0
+      
+      const accountSpecificUtxos: FormattedUtxo[] = [
+        {
+          txId: uniqueTxId,
+          outputIndex: 0,
+          satoshis: 10000000,
+          address: account.taproot.address,
+          scriptPk: 'mock_script',
+          inscriptions: [],
+          runes: {},
+          alkanes: {},
+          indexed: true,
+          confirmations: 3
+        }
+      ]
+      
+      return {
+        accountUtxos: accountSpecificUtxos,
+        accountTotalBalance: 10000000,
+        accountSpendableTotalUtxos: accountSpecificUtxos,
+        accountSpendableTotalBalance: 10000000,
+        accountPendingTotalBalance: 0,
+        accounts: {
+          taproot: {
+            alkaneUtxos: [],
+            spendableTotalBalance: 10000000,
+            spendableUtxos: accountSpecificUtxos,
+            runeUtxos: [],
+            ordUtxos: [],
+            pendingUtxos: [],
+            pendingTotalBalance: 0,
+            totalBalance: 10000000,
+            utxos: accountSpecificUtxos,
+          },
+          nativeSegwit: {
+            alkaneUtxos: [],
+            spendableTotalBalance: 0,
+            spendableUtxos: [],
+            runeUtxos: [],
+            ordUtxos: [],
+            pendingUtxos: [],
+            pendingTotalBalance: 0,
+            totalBalance: 0,
+            utxos: [],
+          },
+          nestedSegwit: {
+            alkaneUtxos: [],
+            spendableTotalBalance: 0,
+            spendableUtxos: [],
+            runeUtxos: [],
+            ordUtxos: [],
+            pendingUtxos: [],
+            pendingTotalBalance: 0,
+            totalBalance: 0,
+            utxos: [],
+          },
+          legacy: {
+            alkaneUtxos: [],
+            spendableTotalBalance: 0,
+            spendableUtxos: [],
+            runeUtxos: [],
+            ordUtxos: [],
+            pendingUtxos: [],
+            pendingTotalBalance: 0,
+            totalBalance: 0,
+            utxos: [],
+          }
+        }
+      }
+    })
   })
 
   it('should execute batch operation with multiple accounts', async () => {
@@ -437,5 +515,48 @@ describe('batchExecute', () => {
 
     // Cleanup
     failingSignerSpy.mockRestore()
+  })
+
+  it('should get unique UTXOs for each derived account', async () => {
+    const testProtostone = encodeRunestoneProtostone({
+      protostones: [
+        ProtoStone.message({
+          protocolTag: 1n,
+          edicts: [],
+          pointer: 0,
+          refundPointer: 0,
+          calldata: encipher([1n, 2n, 77n]),
+        }),
+      ],
+    }).encodedRunestone
+
+    // Track which accounts get which UTXOs
+    const accountUtxoSpy = jest.spyOn(utxo, 'accountUtxos')
+
+    const result = await batchExecute({
+      utxos: testBatchUtxos,
+      protostone: testProtostone,
+      feeRate: 10,
+      account,
+      provider: mockBatchProvider,
+      signer: mockSigner,
+      accountCount: 3,
+      mnemonic
+    })
+
+    // Verify accountUtxos was called for each derived account
+    expect(accountUtxoSpy).toHaveBeenCalledTimes(3)
+    
+    // Verify each call was made with a different account
+    const calledAccounts = accountUtxoSpy.mock.calls.map(call => call[0].account.taproot.address)
+    expect(new Set(calledAccounts).size).toBe(3) // All unique addresses
+    
+    // Verify execution succeeded for all accounts (since they now have unique UTXOs)
+    expect(result.totalAccounts).toBe(3)
+    expect(result.successfulExecutions).toBe(3)
+    expect(result.failedExecutions).toBe(0)
+
+    // Cleanup
+    accountUtxoSpy.mockRestore()
   })
 })

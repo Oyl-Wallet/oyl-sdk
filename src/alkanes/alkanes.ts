@@ -24,7 +24,7 @@ import { getAddressType } from '../shared/utils'
 import { toXOnly } from 'bitcoinjs-lib/src/psbt/bip371'
 import { LEAF_VERSION_TAPSCRIPT } from 'bitcoinjs-lib/src/payments/bip341'
 import { actualDeployCommitFee } from './contract'
-import { selectSpendableUtxos, type FormattedUtxo } from '../utxo'
+import { selectSpendableUtxos, accountUtxos, type FormattedUtxo } from '../utxo'
 
 export interface ProtostoneMessage {
   protocolTag?: bigint
@@ -1028,9 +1028,15 @@ export const batchExecute = async ({
     // Execute with each account and its corresponding signer concurrently
     const executePromises = accountsWithSigners.map(async ({ account: acc, signer: accSigner }, index) => {
       try {
+        // Get UTXOs for this specific account instead of using shared UTXOs
+        const { accountUtxos: accUtxos } = await accountUtxos({
+          account: acc,
+          provider,
+        })
+        
         const result = await execute({
           alkanesUtxos,
-          utxos,
+          utxos: accUtxos,
           account: acc,
           protostone,
           provider,
