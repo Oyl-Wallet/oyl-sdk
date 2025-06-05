@@ -1,8 +1,24 @@
 [![npm version](https://badge.fury.io/js/%40oyl%2Fsdk.svg)](https://www.npmjs.com/package/@oyl/sdk)
 
-# Oyl Sdk
+# Oyl SDK
 
-> A comphrenesive sdk that features easy to use bitcoin functions to build and brodcast btc transactions.
+> A comprehensive SDK that features easy-to-use Bitcoin functions to build and broadcast BTC transactions, with advanced Alkane contract support and automated clock-in services.
+
+## 🚀 New: Auto Clock-In Service
+
+Automated alkane contract clock-in system with:
+- 🕐 **Smart Block Monitoring**: Automatic timing for 144-block intervals
+- 🔄 **Multi-Wallet Execution**: 20 concurrent wallets for maximum efficiency  
+- 📊 **Dynamic Fee Rates**: mempool.space integration with intelligent acceleration
+- 🔔 **Real-time Monitoring**: Comprehensive logging and webhook notifications
+
+### Quick Start
+```bash
+npm run test-config    # Verify setup
+npm run clock-in       # Start auto clock-in service
+```
+
+📖 **[Complete Auto Clock-In Guide](AUTO_CLOCK_IN_GUIDE.md)** | **[All Commands](COMMANDS.md)** | **[Quick Reference](QUICK_REFERENCE.md)**
 
 ## Table of contents
 
