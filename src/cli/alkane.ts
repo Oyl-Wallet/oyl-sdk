@@ -297,6 +297,15 @@ export const alkaneExecute = new AlkanesCommand('execute')
     'Network provider type (regtest, bitcoin)'
   )
   .option('-feeRate, --feeRate <feeRate>', 'fee rate')
+  .option(
+    '-runeId, --rune-id <runeId>',
+    'Rune ID to mint (format: block:tx, e.g., 840000:1)'
+  )
+  .option(
+    '-runePointer, --rune-pointer <runePointer>',
+    'Output index for minted runes (defaults to 1)',
+    '1'
+  )
   .action(async (options) => {
     const wallet: Wallet = new Wallet(options)
 
@@ -328,6 +337,15 @@ export const alkaneExecute = new AlkanesCommand('execute')
       ],
     }).encodedRunestone
 
+    // Parse rune mint options if provided
+    let runeMint: { runeId: string; pointer?: number } | undefined
+    if (options.runeId) {
+      runeMint = {
+        runeId: options.runeId,
+        pointer: parseInt(options.runePointer) || 1,
+      }
+    }
+
     console.log(
       await alkanes.execute({
         protostone,
@@ -336,6 +354,7 @@ export const alkaneExecute = new AlkanesCommand('execute')
         account: wallet.account,
         signer: wallet.signer,
         provider: wallet.provider,
+        runeMint,
       })
     )
   })
@@ -889,6 +908,15 @@ export const alkaneBatchExecute = new AlkanesCommand('batch-execute')
     'Network provider type (regtest, bitcoin)'
   )
   .option('-feeRate, --feeRate <feeRate>', 'fee rate')
+  .option(
+    '-runeId, --rune-id <runeId>',
+    'Rune ID to mint (format: block:tx, e.g., 840000:1)'
+  )
+  .option(
+    '-runePointer, --rune-pointer <runePointer>',
+    'Output index for minted runes (defaults to 1)',
+    '1'
+  )
   .action(async (options) => {
     const wallet: Wallet = new Wallet(options)
 
@@ -920,6 +948,15 @@ export const alkaneBatchExecute = new AlkanesCommand('batch-execute')
       ],
     }).encodedRunestone
 
+    // Parse rune mint options if provided
+    let runeMint: { runeId: string; pointer?: number } | undefined
+    if (options.runeId) {
+      runeMint = {
+        runeId: options.runeId,
+        pointer: parseInt(options.runePointer) || 1,
+      }
+    }
+
     console.log(
       await alkanes.batchExecute({
         protostone,
@@ -930,6 +967,7 @@ export const alkaneBatchExecute = new AlkanesCommand('batch-execute')
         provider: wallet.provider,
         accountCount: parseInt(options.accountCount),
         mnemonic: wallet.mnemonic,
+        runeMint,
       })
     )
   })

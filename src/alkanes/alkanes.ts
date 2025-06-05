@@ -16,6 +16,7 @@ import {
   getVSize,
   inscriptionSats,
   tweakSigner,
+  createRuneMintScript,
 } from '../shared/utils'
 import { getEstimatedFee } from '../psbt'
 import { OylTransactionError } from '../errors'
@@ -64,6 +65,7 @@ export const createExecutePsbt = async ({
   provider,
   feeRate,
   fee = 0,
+  runeMint,
 }: {
   alkanesUtxos?: FormattedUtxo[]
   frontendFee?: bigint
@@ -74,6 +76,10 @@ export const createExecutePsbt = async ({
   provider: Provider
   feeRate?: number
   fee?: number
+  runeMint?: {
+    runeId: string
+    pointer?: number
+  }
 }) => {
   try {
     const SAT_PER_VBYTE = feeRate ?? 1
@@ -86,12 +92,12 @@ export const createExecutePsbt = async ({
     const feeSatEffective: bigint =
       frontendFee && frontendFee >= MIN_RELAY ? frontendFee : 0n
 
-    const spendTargets = inscriptionSats + Number(feeSatEffective)
+    const spendTargets = inscriptionSats + Number(feeSatEffective) + (runeMint ? inscriptionSats : 0)
 
     const minTxSize = minimumFee({
       taprootInputCount: 2,
       nonTaprootInputCount: 0,
-      outputCount: 2 + (feeSatEffective > 0n ? 1 : 0),
+      outputCount: 2 + (feeSatEffective > 0n ? 1 : 0) + (runeMint ? 2 : 0),
     })
 
     const minFee = Math.max(minTxSize * SAT_PER_VBYTE, 250)
@@ -109,7 +115,7 @@ export const createExecutePsbt = async ({
       const newSize = minimumFee({
         taprootInputCount: gatheredUtxos.utxos.length,
         nonTaprootInputCount: 0,
-        outputCount: 2 + (feeSatEffective > 0n ? 1 : 0),
+        outputCount: 2 + (feeSatEffective > 0n ? 1 : 0) + (runeMint ? 2 : 0),
       })
       minerFee = Math.max(newSize * SAT_PER_VBYTE, 250)
       if (gatheredUtxos.totalAmount < minerFee) {
@@ -130,6 +136,16 @@ export const createExecutePsbt = async ({
 
     psbt.addOutput({ address: account.taproot.address, value: inscriptionSats })
     psbt.addOutput({ script: protostone, value: 0 })
+
+    // Add rune mint outputs if specified
+    if (runeMint) {
+      const runeMintScript = createRuneMintScript({
+        runeId: runeMint.runeId,
+        pointer: runeMint.pointer || 1,
+      })
+      psbt.addOutput({ script: runeMintScript, value: 0 })
+      psbt.addOutput({ address: account.taproot.address, value: inscriptionSats })
+    }
 
     if (feeSatEffective > 0n) {
       psbt.addOutput({
@@ -653,6 +669,7 @@ export const actualExecuteFee = async ({
   feeRate,
   frontendFee,
   feeAddress,
+  runeMint,
 }: {
   alkanesUtxos?: FormattedUtxo[]
   utxos: FormattedUtxo[]
@@ -662,6 +679,10 @@ export const actualExecuteFee = async ({
   feeRate: number
   frontendFee?: bigint
   feeAddress?: string
+  runeMint?: {
+    runeId: string
+    pointer?: number
+  }
 }) => {
   const { psbt } = await createExecutePsbt({
     alkanesUtxos,
@@ -672,6 +693,7 @@ export const actualExecuteFee = async ({
     protostone,
     provider,
     feeRate,
+    runeMint,
   })
 
   const { fee: estimatedFee } = await getEstimatedFee({
@@ -690,6 +712,7 @@ export const actualExecuteFee = async ({
     provider,
     feeRate,
     fee: estimatedFee,
+    runeMint,
   })
 
   const { fee: finalFee, vsize } = await getEstimatedFee({
@@ -710,6 +733,7 @@ export const executePsbt = async ({
   feeRate,
   frontendFee,
   feeAddress,
+  runeMint,
 }: {
   alkanesUtxos?: FormattedUtxo[]
   utxos: FormattedUtxo[]
@@ -719,6 +743,10 @@ export const executePsbt = async ({
   feeRate?: number
   frontendFee?: bigint
   feeAddress?: string
+  runeMint?: {
+    runeId: string
+    pointer?: number
+  }
 }) => {
   const { fee } = await actualExecuteFee({
     alkanesUtxos,
@@ -729,6 +757,7 @@ export const executePsbt = async ({
     protostone,
     provider,
     feeRate,
+    runeMint,
   })
 
   const { psbt: finalPsbt } = await createExecutePsbt({
@@ -741,6 +770,7 @@ export const executePsbt = async ({
     provider,
     feeRate,
     fee,
+    runeMint,
   })
 
   return { psbt: finalPsbt, fee }
@@ -756,6 +786,7 @@ export const execute = async ({
   signer,
   frontendFee,
   feeAddress,
+  runeMint,
 }: {
   alkanesUtxos?: FormattedUtxo[]
   utxos: FormattedUtxo[]
@@ -766,6 +797,10 @@ export const execute = async ({
   signer: Signer
   frontendFee?: bigint
   feeAddress?: string
+  runeMint?: {
+    runeId: string
+    pointer?: number
+  }
 }) => {
   const { fee } = await actualExecuteFee({
     alkanesUtxos,
@@ -776,6 +811,7 @@ export const execute = async ({
     protostone,
     provider,
     feeRate,
+    runeMint,
   })
 
   const { psbt: finalPsbt } = await createExecutePsbt({
@@ -788,6 +824,7 @@ export const execute = async ({
     provider,
     feeRate,
     fee,
+    runeMint,
   })
 
   const { signedPsbt } = await signer.signAllInputs({
@@ -912,6 +949,7 @@ export const batchExecute = async ({
   feeAddress,
   accountCount,
   mnemonic,
+  runeMint,
 }: {
   alkanesUtxos?: FormattedUtxo[]
   utxos: FormattedUtxo[]
@@ -924,6 +962,10 @@ export const batchExecute = async ({
   feeAddress?: string
   accountCount: number
   mnemonic: string
+  runeMint?: {
+    runeId: string
+    pointer?: number
+  }
 }) => {
   try {
     if (accountCount < 1) {
@@ -957,6 +999,7 @@ export const batchExecute = async ({
           signer,
           frontendFee,
           feeAddress,
+          runeMint,
         })
         return {
           account: {
