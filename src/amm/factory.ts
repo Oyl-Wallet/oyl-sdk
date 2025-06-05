@@ -10,6 +10,7 @@ import {
   findXAmountOfSats,
   formatInputsToSign,
   getAddressType,
+  inscriptionSats,
   OylTransactionError,
   Provider,
   Signer,
@@ -424,7 +425,7 @@ export const poolPsbt = async ({
     let calculatedFee = Math.max(minTxSize * feeRate, 250)
     let finalFee = fee === 0 ? calculatedFee : fee
 
-    gatheredUtxos = findXAmountOfSats([...utxos], Number(finalFee) + 546)
+    gatheredUtxos = findXAmountOfSats([...utxos], Number(finalFee) + inscriptionSats)
 
     let psbt = new bitcoin.Psbt({ network: provider.network })
 
@@ -543,7 +544,7 @@ export const poolPsbt = async ({
     }
     psbt.addOutput({
       address: account.taproot.address,
-      value: 546,
+      value: inscriptionSats,
     })
 
     const output = { script: protostone, value: 0 }
@@ -555,7 +556,7 @@ export const poolPsbt = async ({
     )
 
     const changeAmount =
-      gatheredUtxos.totalAmount + alkanesTotalAmount - finalFee - 546
+      gatheredUtxos.totalAmount + alkanesTotalAmount - finalFee - inscriptionSats
 
     psbt.addOutput({
       address: account[account.spendStrategy.changeAddress].address,

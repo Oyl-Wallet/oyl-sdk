@@ -2,7 +2,7 @@ import { Provider } from '../provider'
 import { Account, AddressKey, SpendStrategy } from '../account'
 import asyncPool from 'tiny-async-pool'
 import { OrdOutput } from 'rpclient/ord'
-import { getAddressKey } from '../shared/utils'
+import { getAddressKey, inscriptionSats } from '../shared/utils'
 import { AlkanesByAddressResponse, AlkanesOutpoint } from '@alkanes/types'
 import { toTxId } from '../alkanes'
 import { OylTransactionError } from '../errors'
@@ -297,8 +297,7 @@ export const addressUtxos = async ({
         !hasInscriptions &&
         !hasRunes &&
         !hasAlkanes &&
-        utxo.value !== 546 &&
-        utxo.value !== 330
+        utxo.value !== inscriptionSats
       ) {
         spendableUtxos.push({
           txId: utxo.txid,
@@ -432,8 +431,7 @@ export const selectSpendableUtxos = (
       u.inscriptions.length <= 0 &&
       Object.keys(u.runes).length <= 0 &&
       Object.keys(u.alkanes).length <= 0 &&
-      u.satoshis !== 546 &&
-      u.satoshis !== 330
+      u.satoshis !== inscriptionSats
   )
 
   const buckets = new Map<string, FormattedUtxo[]>()

@@ -865,7 +865,7 @@ describe('utxo', () => {
   })
 
   describe('addressUtxos', () => {
-    it('should filter out 546 and 330 satoshi UTXOs from spendable UTXOs', async () => {
+    it('should filter out 330 satoshi UTXOs from spendable UTXOs', async () => {
       // Add test UTXOs with special values
       const specialValueUtxos: EsploraUtxo[] = [
         {
@@ -942,15 +942,17 @@ describe('utxo', () => {
         provider: provider,
       })
 
-      // Verify that 546 and 330 satoshi UTXOs are in otherUtxos, not spendableUtxos
-      expect(result.spendableUtxos).toHaveLength(1)
-      expect(result.spendableUtxos[0].satoshis).toBe(1000)
+      // Verify that only 330 satoshi UTXOs are filtered out (not 546 anymore)
+      expect(result.spendableUtxos).toHaveLength(2)
       expect(result.spendableUtxos.map((utxo) => utxo.satoshis)).toEqual(
-        expect.not.arrayContaining([546, 330])
+        expect.arrayContaining([1000, 546])
+      )
+      expect(result.spendableUtxos.map((utxo) => utxo.satoshis)).toEqual(
+        expect.not.arrayContaining([330])
       )
 
       // Verify total balances
-      expect(result.spendableTotalBalance).toBe(1000)
+      expect(result.spendableTotalBalance).toBe(1546) // 546 + 1000
       expect(result.totalBalance).toBe(1876) // 546 + 330 + 1000
     })
 

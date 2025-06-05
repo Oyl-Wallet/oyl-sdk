@@ -86,7 +86,7 @@ export const createExecutePsbt = async ({
     const feeSatEffective: bigint =
       frontendFee && frontendFee >= MIN_RELAY ? frontendFee : 0n
 
-    const spendTargets = 546 + Number(feeSatEffective)
+    const spendTargets = inscriptionSats + Number(feeSatEffective)
 
     const minTxSize = minimumFee({
       taprootInputCount: 2,
@@ -128,7 +128,7 @@ export const createExecutePsbt = async ({
       await addInputForUtxo(psbt, utxo, account, provider)
     }
 
-    psbt.addOutput({ address: account.taproot.address, value: 546 })
+    psbt.addOutput({ address: account.taproot.address, value: inscriptionSats })
     psbt.addOutput({ script: protostone, value: 0 })
 
     if (feeSatEffective > 0n) {
@@ -349,7 +349,7 @@ export const createDeployCommitPsbt = async ({
     }
 
     psbt.addOutput({
-      value: finalFee + wasmDeploySize + 546,
+      value: finalFee + wasmDeploySize + inscriptionSats,
       address: inscriberInfo.address,
     })
 
@@ -499,7 +499,7 @@ export const createDeployRevealPsbt = async ({
     })
 
     psbt.addOutput({
-      value: 546,
+      value: inscriptionSats,
       address: receiverAddress,
     })
 
@@ -508,7 +508,7 @@ export const createDeployRevealPsbt = async ({
       script: protostone,
     })
 
-    if (revealTxChange > 546) {
+    if (revealTxChange > inscriptionSats) {
       psbt.addOutput({
         value: revealTxChange,
         address: receiverAddress,
@@ -872,7 +872,7 @@ export const createTransactReveal = async ({
     })
 
     psbt.addOutput({
-      value: 546,
+      value: inscriptionSats,
       address: receiverAddress,
     })
 
@@ -881,7 +881,7 @@ export const createTransactReveal = async ({
       script: protostone,
     })
 
-    if (revealTxChange > 546) {
+    if (revealTxChange > inscriptionSats) {
       psbt.addOutput({
         value: revealTxChange,
         address: receiverAddress,

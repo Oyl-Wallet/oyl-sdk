@@ -425,7 +425,7 @@ export const createEtchCommit = async ({
     })
 
     psbt.addOutput({
-      value: Number(finalFee) + 546,
+      value: Number(finalFee) + inscriptionSats,
       address: inscriberInfo.address,
     })
 
@@ -624,10 +624,10 @@ export const createEtchReveal = async ({
     })
 
     psbt.addOutput({
-      value: 546,
+      value: inscriptionSats,
       address: receiverAddress,
     })
-    if (revealTxChange > 546) {
+    if (revealTxChange > inscriptionSats) {
       psbt.addOutput({
         value: revealTxChange,
         address: receiverAddress,

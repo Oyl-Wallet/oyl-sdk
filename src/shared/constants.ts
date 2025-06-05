@@ -3,7 +3,7 @@ import * as bitcoin from 'bitcoinjs-lib'
 import * as dotenv from 'dotenv'
 dotenv.config()
 
-export const UTXO_DUST = 546
+export const UTXO_DUST = 330
 
 export const maximumScriptBytes = 520
 

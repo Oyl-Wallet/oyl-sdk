@@ -45,7 +45,7 @@ export declare const addressTypeMap: {
     2: string;
     3: string;
 };
-export declare const inscriptionSats = 546;
+export declare const inscriptionSats = 330;
 export declare const ECPair: import("ecpair").ECPairAPI;
 export declare const assertHex: (pubKey: Buffer) => Buffer;
 export declare function getNetwork(value: Network): bitcoin.Network;
