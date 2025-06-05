@@ -66,6 +66,8 @@ export const createExecutePsbt = async ({
   feeRate,
   fee = 0,
   runeMint,
+  alkaneReceiverAddress,
+  runeReceiverAddress,
 }: {
   alkanesUtxos?: FormattedUtxo[]
   frontendFee?: bigint
@@ -80,6 +82,8 @@ export const createExecutePsbt = async ({
     runeId: string
     pointer?: number
   }
+  alkaneReceiverAddress?: string
+  runeReceiverAddress?: string
 }) => {
   try {
     const SAT_PER_VBYTE = feeRate ?? 1
@@ -134,7 +138,10 @@ export const createExecutePsbt = async ({
       await addInputForUtxo(psbt, utxo, account, provider)
     }
 
-    psbt.addOutput({ address: account.taproot.address, value: inscriptionSats })
+    psbt.addOutput({ 
+      address: alkaneReceiverAddress || account.taproot.address, 
+      value: inscriptionSats 
+    })
     psbt.addOutput({ script: protostone, value: 0 })
 
     // Add rune mint outputs if specified
@@ -144,7 +151,10 @@ export const createExecutePsbt = async ({
         pointer: runeMint.pointer || 1,
       })
       psbt.addOutput({ script: runeMintScript, value: 0 })
-      psbt.addOutput({ address: account.taproot.address, value: inscriptionSats })
+      psbt.addOutput({ 
+        address: runeReceiverAddress || account.taproot.address, 
+        value: inscriptionSats 
+      })
     }
 
     if (feeSatEffective > 0n) {
@@ -670,6 +680,8 @@ export const actualExecuteFee = async ({
   frontendFee,
   feeAddress,
   runeMint,
+  alkaneReceiverAddress,
+  runeReceiverAddress,
 }: {
   alkanesUtxos?: FormattedUtxo[]
   utxos: FormattedUtxo[]
@@ -683,6 +695,8 @@ export const actualExecuteFee = async ({
     runeId: string
     pointer?: number
   }
+  alkaneReceiverAddress?: string
+  runeReceiverAddress?: string
 }) => {
   const { psbt } = await createExecutePsbt({
     alkanesUtxos,
@@ -694,6 +708,8 @@ export const actualExecuteFee = async ({
     provider,
     feeRate,
     runeMint,
+    alkaneReceiverAddress,
+    runeReceiverAddress,
   })
 
   const { fee: estimatedFee } = await getEstimatedFee({
@@ -713,6 +729,8 @@ export const actualExecuteFee = async ({
     feeRate,
     fee: estimatedFee,
     runeMint,
+    alkaneReceiverAddress,
+    runeReceiverAddress,
   })
 
   const { fee: finalFee, vsize } = await getEstimatedFee({
@@ -734,6 +752,8 @@ export const executePsbt = async ({
   frontendFee,
   feeAddress,
   runeMint,
+  alkaneReceiverAddress,
+  runeReceiverAddress,
 }: {
   alkanesUtxos?: FormattedUtxo[]
   utxos: FormattedUtxo[]
@@ -747,6 +767,8 @@ export const executePsbt = async ({
     runeId: string
     pointer?: number
   }
+  alkaneReceiverAddress?: string
+  runeReceiverAddress?: string
 }) => {
   const { fee } = await actualExecuteFee({
     alkanesUtxos,
@@ -758,6 +780,8 @@ export const executePsbt = async ({
     provider,
     feeRate,
     runeMint,
+    alkaneReceiverAddress,
+    runeReceiverAddress,
   })
 
   const { psbt: finalPsbt } = await createExecutePsbt({
@@ -771,6 +795,8 @@ export const executePsbt = async ({
     feeRate,
     fee,
     runeMint,
+    alkaneReceiverAddress,
+    runeReceiverAddress,
   })
 
   return { psbt: finalPsbt, fee }
@@ -787,6 +813,8 @@ export const execute = async ({
   frontendFee,
   feeAddress,
   runeMint,
+  alkaneReceiverAddress,
+  runeReceiverAddress,
 }: {
   alkanesUtxos?: FormattedUtxo[]
   utxos: FormattedUtxo[]
@@ -801,6 +829,8 @@ export const execute = async ({
     runeId: string
     pointer?: number
   }
+  alkaneReceiverAddress?: string
+  runeReceiverAddress?: string
 }) => {
   const { fee } = await actualExecuteFee({
     alkanesUtxos,
@@ -812,6 +842,8 @@ export const execute = async ({
     provider,
     feeRate,
     runeMint,
+    alkaneReceiverAddress,
+    runeReceiverAddress,
   })
 
   const { psbt: finalPsbt } = await createExecutePsbt({
@@ -825,6 +857,8 @@ export const execute = async ({
     feeRate,
     fee,
     runeMint,
+    alkaneReceiverAddress,
+    runeReceiverAddress,
   })
 
   const { signedPsbt } = await signer.signAllInputs({
@@ -950,6 +984,8 @@ export const batchExecute = async ({
   accountCount,
   mnemonic,
   runeMint,
+  alkaneReceiverAddress,
+  runeReceiverAddress,
 }: {
   alkanesUtxos?: FormattedUtxo[]
   utxos: FormattedUtxo[]
@@ -966,6 +1002,8 @@ export const batchExecute = async ({
     runeId: string
     pointer?: number
   }
+  alkaneReceiverAddress?: string
+  runeReceiverAddress?: string
 }) => {
   try {
     if (accountCount < 1) {
@@ -1000,6 +1038,8 @@ export const batchExecute = async ({
           frontendFee,
           feeAddress,
           runeMint,
+          alkaneReceiverAddress,
+          runeReceiverAddress,
         })
         return {
           account: {

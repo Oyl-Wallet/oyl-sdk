@@ -306,6 +306,14 @@ export const alkaneExecute = new AlkanesCommand('execute')
     'Output index for minted runes (defaults to 1)',
     '1'
   )
+  .option(
+    '-alkaneReceiver, --alkane-receiver <alkaneReceiver>',
+    'Address to receive alkane assets (defaults to wallet address)'
+  )
+  .option(
+    '-runeReceiver, --rune-receiver <runeReceiver>',
+    'Address to receive rune tokens (defaults to wallet address)'
+  )
   .action(async (options) => {
     const wallet: Wallet = new Wallet(options)
 
@@ -355,6 +363,8 @@ export const alkaneExecute = new AlkanesCommand('execute')
         signer: wallet.signer,
         provider: wallet.provider,
         runeMint,
+        alkaneReceiverAddress: options.alkaneReceiver,
+        runeReceiverAddress: options.runeReceiver,
       })
     )
   })
@@ -917,6 +927,14 @@ export const alkaneBatchExecute = new AlkanesCommand('batch-execute')
     'Output index for minted runes (defaults to 1)',
     '1'
   )
+  .option(
+    '-alkaneReceiver, --alkane-receiver <alkaneReceiver>',
+    'Address to receive alkane assets (defaults to wallet address)'
+  )
+  .option(
+    '-runeReceiver, --rune-receiver <runeReceiver>',
+    'Address to receive rune tokens (defaults to wallet address)'
+  )
   .action(async (options) => {
     const wallet: Wallet = new Wallet(options)
 
@@ -968,6 +986,8 @@ export const alkaneBatchExecute = new AlkanesCommand('batch-execute')
         accountCount: parseInt(options.accountCount),
         mnemonic: wallet.mnemonic,
         runeMint,
+        alkaneReceiverAddress: options.alkaneReceiver,
+        runeReceiverAddress: options.runeReceiver,
       })
     )
   })

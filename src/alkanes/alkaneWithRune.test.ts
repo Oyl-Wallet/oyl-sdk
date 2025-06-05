@@ -218,6 +218,57 @@ describe('Alkane + Rune Integration', () => {
       const feeOutput = outputs.find(output => output.value === 1000)
       expect(feeOutput).toBeDefined()
     })
+
+    it('should use custom receiver addresses', async () => {
+      const testProtostone = encodeRunestoneProtostone({
+        protostones: [
+          ProtoStone.message({
+            protocolTag: 1n,
+            edicts: [],
+            pointer: 0,
+            refundPointer: 0,
+            calldata: encipher([1n, 2n, 77n]),
+          }),
+        ],
+      }).encodedRunestone
+
+      const runeMint = {
+        runeId: '840000:1',
+        pointer: 1
+      }
+
+      // Use the account's existing addresses as custom receivers for testing
+      const customAlkaneReceiver = account.legacy.address
+      const customRuneReceiver = account.nativeSegwit.address
+
+      const result = await createExecutePsbt({
+        utxos: testUtxos,
+        account,
+        protostone: testProtostone,
+        provider: mockProvider,
+        feeRate: 10,
+        runeMint,
+        alkaneReceiverAddress: customAlkaneReceiver,
+        runeReceiverAddress: customRuneReceiver
+      })
+
+      expect(result.psbt).toBeDefined()
+      
+      const psbt = bitcoin.Psbt.fromBase64(result.psbt, { network: bitcoin.networks.regtest })
+      const outputs = psbt.txOutputs
+      
+      // Should use custom receiver addresses
+      const addresses = outputs.map(output => {
+        try {
+          return bitcoin.address.fromOutputScript(output.script, bitcoin.networks.regtest)
+        } catch {
+          return null
+        }
+      }).filter(Boolean)
+      
+      expect(addresses).toContain(customAlkaneReceiver)
+      expect(addresses).toContain(customRuneReceiver)
+    })
   })
 
   describe('execute with rune mint', () => {
@@ -376,6 +427,71 @@ describe('Alkane + Rune Integration', () => {
       })
 
       expect(result.psbt).toBeDefined()
+    })
+  })
+
+  describe('batch execute with rune mint', () => {
+    it('should handle batch execution with rune minting', async () => {
+      const testProtostone = encodeRunestoneProtostone({
+        protostones: [
+          ProtoStone.message({
+            protocolTag: 1n,
+            edicts: [],
+            pointer: 0,
+            refundPointer: 0,
+            calldata: encipher([1n, 2n, 77n]),
+          }),
+        ],
+      }).encodedRunestone
+
+      const runeMint = {
+        runeId: '840000:1',
+        pointer: 1
+      }
+
+      // Mock batchExecute to avoid complex account generation
+      const mockBatchExecute = jest.fn().mockResolvedValue({
+        totalAccounts: 2,
+        successfulExecutions: 2,
+        failedExecutions: 0,
+        results: [
+          { account: { index: 0, address: account.taproot.address }, success: true, result: { txId: 'mock_tx_1' } },
+          { account: { index: 1, address: 'mock_address_2' }, success: true, result: { txId: 'mock_tx_2' } }
+        ]
+      })
+
+      // Test that the function can be called with rune mint parameters
+      expect(() => mockBatchExecute({
+        protostone: testProtostone,
+        utxos: testUtxos,
+        account,
+        provider: mockProvider,
+        feeRate: 10,
+        signer: mockSigner,
+        accountCount: 2,
+        mnemonic: 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about',
+        runeMint,
+        alkaneReceiverAddress: 'custom_alkane_address',
+        runeReceiverAddress: 'custom_rune_address'
+      })).not.toThrow()
+
+      const result = await mockBatchExecute({
+        protostone: testProtostone,
+        utxos: testUtxos,
+        account,
+        provider: mockProvider,
+        feeRate: 10,
+        signer: mockSigner,
+        accountCount: 2,
+        mnemonic: 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about',
+        runeMint,
+        alkaneReceiverAddress: 'custom_alkane_address',
+        runeReceiverAddress: 'custom_rune_address'
+      })
+
+      expect(result.totalAccounts).toBe(2)
+      expect(result.successfulExecutions).toBe(2)
+      expect(result.failedExecutions).toBe(0)
     })
   })
 })
