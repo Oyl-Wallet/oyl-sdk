@@ -815,6 +815,10 @@ export const alkaneList = new AlkanesCommand('list')
     'Network provider type (regtest, bitcoin)',
     'bitcoin',
   )
+  .option(
+    '-d, --detailed',
+    'Show detailed UTXO breakdown instead of aggregated view'
+  )
   .action(async (options) => {
     const wallet: Wallet = new Wallet({ networkType: options.provider });
     const accountPortfolio: AccountUtxoPortfolio = await utxo.accountUtxos({
@@ -822,29 +826,47 @@ export const alkaneList = new AlkanesCommand('list')
       provider: wallet.provider,
     });
 
-    console.log(`Listing Alkanes for account derived from mnemonic (Provider: ${options.provider}):`);
+    console.log(`=== ALKANES BALANCE OVERVIEW ===`);
+    console.log(`Provider: ${options.provider}\n`);
+
+    // Aggregate alkanes by token ID
+    const alkaneBalances = new Map<string, {
+      name: string;
+      symbol: string;
+      totalValue: number;
+      utxoCount: number;
+      utxos: Array<{ txId: string; outputIndex: number; address: string; value: string }>;
+    }>();
+
     let foundAlkanes = false;
 
-    const allUtxos: FormattedUtxo[] = [];
-    for (const addressType in accountPortfolio.accounts) {
-      if (Object.prototype.hasOwnProperty.call(accountPortfolio.accounts, addressType)) {
-        allUtxos.push(...accountPortfolio.accounts[addressType].utxos);
-      }
-    }
-    
     if (accountPortfolio.accountUtxos && accountPortfolio.accountUtxos.length > 0) {
       accountPortfolio.accountUtxos.forEach((utxoItem: FormattedUtxo) => {
         if (utxoItem.alkanes && Object.keys(utxoItem.alkanes).length > 0) {
           foundAlkanes = true;
-          console.log(`
-  UTXO: ${utxoItem.txId}:${utxoItem.outputIndex} (Address: ${utxoItem.address})`);
           for (const alkaneId in utxoItem.alkanes) {
             if (Object.prototype.hasOwnProperty.call(utxoItem.alkanes, alkaneId)) {
               const alkaneDetails = utxoItem.alkanes[alkaneId];
-              console.log(`    - Alkane ID: ${alkaneId}`);
-              console.log(`      Name: ${alkaneDetails.name}`);
-              console.log(`      Symbol: ${alkaneDetails.symbol}`);
-              console.log(`      Amount/Value: ${alkaneDetails.value}`);
+              
+              if (!alkaneBalances.has(alkaneId)) {
+                alkaneBalances.set(alkaneId, {
+                  name: alkaneDetails.name,
+                  symbol: alkaneDetails.symbol,
+                  totalValue: 0,
+                  utxoCount: 0,
+                  utxos: []
+                });
+              }
+
+              const balance = alkaneBalances.get(alkaneId)!;
+              balance.totalValue += Number(alkaneDetails.value);
+              balance.utxoCount += 1;
+              balance.utxos.push({
+                txId: utxoItem.txId,
+                outputIndex: utxoItem.outputIndex,
+                address: utxoItem.address,
+                value: alkaneDetails.value
+              });
             }
           }
         }
@@ -853,6 +875,40 @@ export const alkaneList = new AlkanesCommand('list')
 
     if (!foundAlkanes) {
       console.log('  No Alkanes assets found for this account.');
+      return;
+    }
+
+    if (options.detailed) {
+      // Show detailed UTXO breakdown
+      console.log('📋 Detailed UTXO Breakdown:');
+      alkaneBalances.forEach((balance, alkaneId) => {
+        console.log(`\n🪙 ${alkaneId} (${balance.name} / ${balance.symbol})`);
+        console.log(`   Total Balance: ${balance.totalValue}`);
+        console.log(`   UTXOs: ${balance.utxoCount}`);
+        console.log('   ─────────────────────────────────────────');
+        balance.utxos.forEach((utxo) => {
+          console.log(`   📦 ${utxo.txId}:${utxo.outputIndex}`);
+          console.log(`      Address: ${utxo.address}`);
+          console.log(`      Amount: ${utxo.value}`);
+          console.log('');
+        });
+      });
+    } else {
+      // Show aggregated view (default)
+      console.log('💰 Aggregated Token Balances:');
+      console.log('');
+      alkaneBalances.forEach((balance, alkaneId) => {
+        console.log(`🪙 ${alkaneId}`);
+        console.log(`   Name: ${balance.name}`);
+        console.log(`   Symbol: ${balance.symbol}`);
+        console.log(`   Total Balance: ${balance.totalValue}`);
+        console.log(`   Held in ${balance.utxoCount} UTXO(s)`);
+        console.log('');
+      });
+
+      console.log('─────────────────────────────────────────');
+      console.log(`📊 Summary: ${alkaneBalances.size} unique alkane type(s) found`);
+      console.log(`💡 Use --detailed flag for UTXO breakdown`);
     }
   });
 
