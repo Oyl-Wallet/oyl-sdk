@@ -13,7 +13,10 @@
     "dev": "tsc -w",
     "prettier": "prettier --write ./src.ts/**/*.ts",
     "test": "jest",
-    "oyl": "oyl"
+    "oyl": "oyl",
+    "clock-in": "node lib/scripts/auto-clock-in.js",
+    "test-config": "node lib/scripts/test-config.js",
+    "test-fees": "node lib/scripts/test-fee-rates.js"
   },
   "bin": {
     "oyl-cli": "./bin/cli.js",
