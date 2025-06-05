@@ -14,8 +14,8 @@ export const regtestOpts: MnemonicToAccountOptions = {
   network: bitcoin.networks.regtest,
   index: 0,
   spendStrategy: {
-    changeAddress: 'nativeSegwit',
-    addressOrder: ['nativeSegwit', 'nestedSegwit', 'taproot', 'legacy'],
+    changeAddress: 'taproot',
+    addressOrder: ['taproot', 'nativeSegwit', 'nestedSegwit', 'legacy'],
     utxoSortGreatestToLeast: true,
   },
 }
@@ -24,8 +24,8 @@ export const Opts: MnemonicToAccountOptions = {
   network: bitcoin.networks.bitcoin,
   index: 0,
   spendStrategy: {
-    changeAddress: 'nativeSegwit',
-    addressOrder: ['nativeSegwit', 'nestedSegwit', 'taproot', 'legacy'],
+    changeAddress: 'taproot',
+    addressOrder: ['taproot', 'nativeSegwit', 'nestedSegwit', 'legacy'],
     utxoSortGreatestToLeast: true,
   },
 }

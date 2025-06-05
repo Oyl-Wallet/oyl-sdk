@@ -533,7 +533,7 @@ describe('utxo', () => {
   })
 
   describe('selectUtxos', () => {
-    it('returns the right utxos for smart spend (default)', async () => {
+    it('returns the right utxos for smart spend with nativeSegwit first', async () => {
       const result = selectUtxos(accountUtxosFixture, {
         addressOrder: ['nativeSegwit', 'nestedSegwit', 'taproot', 'legacy'],
         utxoSortGreatestToLeast: true,
@@ -587,6 +587,34 @@ describe('utxo', () => {
       expect(result[6].address).toMatch(/m/)
       expect(result[7].address).toMatch(/m/)
       expect(result[6].satoshis).toBeLessThan(result[7].satoshis)
+    })
+
+    it('returns the right utxos for smart spend (new default taproot first)', async () => {
+      const result = selectUtxos(accountUtxosFixture, {
+        addressOrder: ['taproot', 'nativeSegwit', 'nestedSegwit', 'legacy'],
+        utxoSortGreatestToLeast: true,
+        changeAddress: 'taproot',
+      })
+
+      // Taproot (should be first now)
+      expect(result[0].address).toMatch(/bcrt1p/)
+      expect(result[1].address).toMatch(/bcrt1p/)
+      expect(result[0].satoshis).toBeGreaterThan(result[1].satoshis)
+
+      // Native SegWit
+      expect(result[2].address).toMatch(/bcrt1q/)
+      expect(result[3].address).toMatch(/bcrt1q/)
+      expect(result[2].satoshis).toBeGreaterThan(result[3].satoshis)
+
+      // Nested Segwit
+      expect(result[4].address).toMatch(/2N/)
+      expect(result[5].address).toMatch(/2N/)
+      expect(result[4].satoshis).toBeGreaterThan(result[5].satoshis)
+
+      // Legacy
+      expect(result[6].address).toMatch(/m/)
+      expect(result[7].address).toMatch(/m/)
+      expect(result[6].satoshis).toBeGreaterThan(result[7].satoshis)
     })
 
     it('returns the right utxos for single address', async () => {
