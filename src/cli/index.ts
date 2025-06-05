@@ -19,7 +19,7 @@ import {
 import { init, genBlocks, sendFromFaucet } from './regtest'
 import { runeSend, runeMint, runeEtchCommit, runeEtchReveal } from './rune'
 import { brc20Send } from './brc20'
-import { btcSend } from './btc'
+import { btcSend, btcSplit } from './btc'
 import {
   accountAvailableBalance,
   accountUtxosToSpend,
@@ -68,6 +68,7 @@ const utxosCommand = new Command('utxo')
 const btcCommand = new Command('btc')
   .description('Functions for sending bitcoin')
   .addCommand(btcSend)
+  .addCommand(btcSplit)
 
 const brc20Command = new Command('brc20')
   .description('Functions for brc20')
