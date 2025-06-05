@@ -850,3 +850,86 @@ export const alkaneList = new AlkanesCommand('list')
       console.log('  No Alkanes assets found for this account.');
     }
   });
+
+/* @dev example call 
+  oyl alkane batch-execute -data 2,1,77 -n 100 -feeRate 10 -p regtest
+
+  Executes alkane operation with 100 accounts (main account + 99 child accounts)
+  All accounts will execute the same calldata concurrently
+*/
+export const alkaneBatchExecute = new AlkanesCommand('batch-execute')
+  .requiredOption(
+    '-data, --calldata <calldata>',
+    'op code + params to be called on a contract',
+    (value, previous) => {
+      const items = value.split(',')
+      return previous ? previous.concat(items) : items
+    },
+    []
+  )
+  .requiredOption(
+    '-n, --accountCount <accountCount>',
+    'number of accounts to execute with (includes main account)'
+  )
+  .option(
+    '-e, --edicts <edicts>',
+    'edicts for protostone',
+    (value, previous) => {
+      const items = value.split(',')
+      return previous ? previous.concat(items) : items
+    },
+    []
+  )
+  .option(
+    '-m, --mnemonic <mnemonic>',
+    '(optional) Mnemonic used for signing transactions (default = TEST_WALLET)'
+  )
+  .option(
+    '-p, --provider <provider>',
+    'Network provider type (regtest, bitcoin)'
+  )
+  .option('-feeRate, --feeRate <feeRate>', 'fee rate')
+  .action(async (options) => {
+    const wallet: Wallet = new Wallet(options)
+
+    const { accountUtxos } = await utxo.accountUtxos({
+      account: wallet.account,
+      provider: wallet.provider,
+    })
+    const calldata: bigint[] = options.calldata.map((item) => BigInt(item))
+
+    const edicts: ProtoruneEdict[] = options.edicts.map((item) => {
+      const [block, tx, amount, output] = item
+        .split(':')
+        .map((part) => part.trim())
+      return {
+        id: new ProtoruneRuneId(u128(block), u128(tx)),
+        amount: amount ? BigInt(amount) : undefined,
+        output: output ? Number(output) : undefined,
+      }
+    })
+    const protostone: Buffer = encodeRunestoneProtostone({
+      protostones: [
+        ProtoStone.message({
+          protocolTag: 1n,
+          edicts,
+          pointer: 0,
+          refundPointer: 0,
+          calldata: encipher(calldata),
+        }),
+      ],
+    }).encodedRunestone
+
+    console.log(
+      await alkanes.batchExecute({
+        protostone,
+        utxos: accountUtxos,
+        feeRate: wallet.feeRate,
+        account: wallet.account,
+        signer: wallet.signer,
+        provider: wallet.provider,
+        accountCount: parseInt(options.accountCount),
+        mnemonic: wallet.mnemonic,
+      })
+    )
+  })

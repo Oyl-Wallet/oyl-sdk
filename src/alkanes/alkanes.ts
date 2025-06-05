@@ -8,7 +8,7 @@ import {
   ProtoStone,
 } from 'alkanes/lib/index'
 import { ProtoruneEdict } from 'alkanes/lib/protorune/protoruneedict'
-import { Account, AlkaneId, Signer } from '..'
+import { Account, AlkaneId, Signer, mnemonicToAccount } from '..'
 import {
   findXAmountOfSats,
   formatInputsToSign,
@@ -899,3 +899,124 @@ export const createTransactReveal = async ({
 
 export const toTxId = (rawLeTxid: string) =>
   Buffer.from(rawLeTxid, 'hex').reverse().toString('hex')
+
+export const batchExecute = async ({
+  alkanesUtxos,
+  utxos,
+  account,
+  protostone,
+  provider,
+  feeRate,
+  signer,
+  frontendFee,
+  feeAddress,
+  accountCount,
+  mnemonic,
+}: {
+  alkanesUtxos?: FormattedUtxo[]
+  utxos: FormattedUtxo[]
+  account: Account
+  protostone: Buffer
+  provider: Provider
+  feeRate?: number
+  signer: Signer
+  frontendFee?: bigint
+  feeAddress?: string
+  accountCount: number
+  mnemonic: string
+}) => {
+  try {
+    if (accountCount < 1) {
+      throw new Error('Account count must be at least 1')
+    }
+
+    // Generate child accounts (account at index 0 is the main one)
+    const accounts: Account[] = [account]
+    for (let i = 1; i < accountCount; i++) {
+      const childAccount = mnemonicToAccount({
+        mnemonic,
+        opts: {
+          network: account.network,
+          index: i,
+          spendStrategy: account.spendStrategy,
+        },
+      })
+      accounts.push(childAccount)
+    }
+
+    // Execute with each account concurrently
+    const executePromises = accounts.map(async (acc) => {
+      try {
+        const result = await execute({
+          alkanesUtxos,
+          utxos,
+          account: acc,
+          protostone,
+          provider,
+          feeRate,
+          signer,
+          frontendFee,
+          feeAddress,
+        })
+        return {
+          account: {
+            index: accounts.indexOf(acc),
+            address: acc.taproot.address,
+          },
+          success: true,
+          result,
+        }
+      } catch (error) {
+        return {
+          account: {
+            index: accounts.indexOf(acc),
+            address: acc.taproot.address,
+          },
+          success: false,
+          error: error.message,
+        }
+      }
+    })
+
+    const results = await Promise.allSettled(executePromises)
+
+    const executionResults = results.map((result, index) => {
+      if (result.status === 'fulfilled') {
+        return result.value
+      } else {
+        return {
+          account: {
+            index,
+            address: accounts[index].taproot.address,
+          },
+          success: false,
+          error: result.reason?.message || 'Unknown error',
+        }
+      }
+    })
+
+    const successfulExecutions = executionResults.filter((r) => r.success)
+    const failedExecutions = executionResults.filter((r) => !r.success)
+
+    return {
+      totalAccounts: accountCount,
+      successfulExecutions: successfulExecutions.length,
+      failedExecutions: failedExecutions.length,
+      results: executionResults,
+      summary: {
+        success: successfulExecutions.map((r) => ({
+          accountIndex: r.account.index,
+          address: r.account.address,
+          txId: r.result?.txId,
+        })),
+        failed: failedExecutions.map((r) => ({
+          accountIndex: r.account.index,
+          address: r.account.address,
+          error: r.error,
+        })),
+      },
+    }
+  } catch (error) {
+    throw new OylTransactionError(error)
+  }
+}

@@ -15,6 +15,7 @@ import {
   alkaneGetAllPoolsDetails,
   alkanePreviewRemoveLiquidity,
   alkaneList,
+  alkaneBatchExecute,
 } from './alkane'
 import { init, genBlocks, sendFromFaucet } from './regtest'
 import { runeSend, runeMint, runeEtchCommit, runeEtchReveal } from './rune'
@@ -89,6 +90,7 @@ const alkaneCommand = new Command('alkane')
   .description('Functions for alkanes')
   .addCommand(alkaneContractDeploy)
   .addCommand(alkaneExecute)
+  .addCommand(alkaneBatchExecute)
   .addCommand(alkaneTokenDeploy)
   .addCommand(alkanesTrace)
   .addCommand(alkaneSend)
