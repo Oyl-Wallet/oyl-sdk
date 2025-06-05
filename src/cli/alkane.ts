@@ -297,9 +297,9 @@ export const alkaneExecute = new AlkanesCommand('execute')
     'Network provider type (regtest, bitcoin)'
   )
   .option('-feeRate, --feeRate <feeRate>', 'fee rate')
-  .option(
+  .requiredOption(
     '-alkaneReceiver, --alkane-receiver <alkaneReceiver>',
-    'Address to receive alkane assets (defaults to wallet address)'
+    'Address to receive alkane assets (required)'
   )
   .action(async (options) => {
     const wallet: Wallet = new Wallet(options)
@@ -950,9 +950,9 @@ export const alkaneBatchExecute = new AlkanesCommand('batch-execute')
     'Network provider type (regtest, bitcoin)'
   )
   .option('-feeRate, --feeRate <feeRate>', 'fee rate')
-  .option(
+  .requiredOption(
     '-alkaneReceiver, --alkane-receiver <alkaneReceiver>',
-    'Address to receive alkane assets (defaults to wallet address)'
+    'Address to receive alkane assets (required)'
   )
   .action(async (options) => {
     const wallet: Wallet = new Wallet(options)

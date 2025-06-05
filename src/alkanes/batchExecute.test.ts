@@ -172,7 +172,8 @@ describe('batchExecute', () => {
       provider: mockBatchProvider,
       signer: mockSigner,
       accountCount: 3,
-      mnemonic
+      mnemonic,
+      alkaneReceiverAddress: account.taproot.address
     })
 
     expect(result.totalAccounts).toBe(3)
@@ -226,7 +227,8 @@ describe('batchExecute', () => {
       provider: mockBatchProvider,
       signer: mockSigner,
       accountCount: 2,
-      mnemonic
+      mnemonic,
+      alkaneReceiverAddress: account.taproot.address
     })
 
     expect(result.totalAccounts).toBe(2)
@@ -276,7 +278,8 @@ describe('batchExecute', () => {
       provider: failingMockProvider,
       signer: mockSigner,
       accountCount: 3,
-      mnemonic
+      mnemonic,
+      alkaneReceiverAddress: account.taproot.address
     })
 
     expect(result.totalAccounts).toBe(3)
@@ -309,7 +312,8 @@ describe('batchExecute', () => {
       provider: mockBatchProvider,
       signer: mockSigner,
       accountCount: 0, // Invalid count
-      mnemonic
+      mnemonic,
+      alkaneReceiverAddress: account.taproot.address
     })).rejects.toThrow('Account count must be at least 1')
   })
 
@@ -334,7 +338,8 @@ describe('batchExecute', () => {
       provider: mockBatchProvider,
       signer: mockSigner,
       accountCount: 1,
-      mnemonic
+      mnemonic,
+      alkaneReceiverAddress: account.taproot.address
     })
 
     expect(result.totalAccounts).toBe(1)
@@ -442,7 +447,8 @@ describe('batchExecute', () => {
       provider: captureSignerProvider,
       signer: mainSigner,
       accountCount: 3,
-      mnemonic
+      mnemonic,
+      alkaneReceiverAddress: account.taproot.address
     })
 
     // Verify that 3 different signers were used
@@ -503,7 +509,8 @@ describe('batchExecute', () => {
       provider: mockBatchProvider,
       signer: mockSigner,
       accountCount: 3,
-      mnemonic
+      mnemonic,
+      alkaneReceiverAddress: account.taproot.address
     })
 
     // Should have 1 failure and 2 successes
@@ -541,7 +548,8 @@ describe('batchExecute', () => {
       provider: mockBatchProvider,
       signer: mockSigner,
       accountCount: 3,
-      mnemonic
+      mnemonic,
+      alkaneReceiverAddress: account.taproot.address
     })
 
     // Verify accountUtxos was called for each derived account
