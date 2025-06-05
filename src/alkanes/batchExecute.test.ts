@@ -1,5 +1,5 @@
 import * as bitcoin from 'bitcoinjs-lib'
-import { Account, mnemonicToAccount } from '../account/account'
+import { Account, mnemonicToAccount, getWalletPrivateKeys } from '../account/account'
 import { Provider } from '../provider/provider'
 import { batchExecute } from './alkanes'
 import { encipher } from 'alkanes/lib/bytes'
@@ -295,5 +295,147 @@ describe('batchExecute', () => {
 
     expect(result.totalAccounts).toBe(2)
     expect(result.successfulExecutions).toBe(2)
+  })
+
+  it('should create unique signers for each derived account', async () => {
+    const testProtostone = encodeRunestoneProtostone({
+      protostones: [
+        ProtoStone.message({
+          protocolTag: 1n,
+          edicts: [],
+          pointer: 0,
+          refundPointer: 0,
+          calldata: encipher([1n, 2n, 77n]),
+        }),
+      ],
+    }).encodedRunestone
+
+    // Track which signers were used during execution
+    const signersUsed: Signer[] = []
+    const originalSignAllInputs = jest.fn()
+    
+    // Create real signers to verify they have correct keys
+    const mainPrivateKeys = getWalletPrivateKeys({
+      mnemonic,
+      opts: {
+        network: bitcoin.networks.regtest,
+        index: 0,
+      },
+    })
+    const mainSigner = new Signer(bitcoin.networks.regtest, {
+      taprootPrivateKey: mainPrivateKeys.taproot.privateKey,
+      segwitPrivateKey: mainPrivateKeys.nativeSegwit.privateKey,
+      nestedSegwitPrivateKey: mainPrivateKeys.nestedSegwit.privateKey,
+      legacyPrivateKey: mainPrivateKeys.legacy.privateKey,
+    })
+
+    // Mock provider that captures signers
+    const captureSignerProvider = {
+      ...mockBatchProvider,
+      pushPsbt: jest.fn().mockImplementation((params) => {
+        // The signer should have been used to sign the PSBT
+        return {
+          txId: `mock_tx_id_${signersUsed.length}`,
+          rawTx: 'mock_raw_tx',
+          size: 250,
+          weight: 1000,
+          fee: 2500,
+          satsPerVByte: '10.00'
+        }
+      })
+    } as unknown as Provider
+
+    // Spy on Signer constructor to capture created signers
+    const originalSigner = Signer
+    const signerSpy = jest.spyOn(Signer.prototype, 'signAllInputs')
+      .mockImplementation(async function(this: Signer, params) {
+        signersUsed.push(this)
+        return {
+          signedPsbt: 'mock_signed_psbt',
+          signedHexPsbt: 'mock_signed_hex_psbt'
+        }
+      })
+
+    const result = await batchExecute({
+      utxos: testBatchUtxos,
+      protostone: testProtostone,
+      feeRate: 10,
+      account,
+      provider: captureSignerProvider,
+      signer: mainSigner,
+      accountCount: 3,
+      mnemonic
+    })
+
+    // Verify that 3 different signers were used
+    expect(signersUsed).toHaveLength(3)
+    
+    // Verify each signer has different taproot keys (since accounts have different indices)
+    const taprootKeys = signersUsed.map(signer => signer.taprootKeyPair.publicKey.toString('hex'))
+    expect(new Set(taprootKeys).size).toBe(3) // All unique public keys
+    
+    // Verify the first signer matches the main account
+    expect(signersUsed[0].taprootKeyPair.publicKey.toString('hex'))
+      .toBe(mainSigner.taprootKeyPair.publicKey.toString('hex'))
+    
+    // Verify accounts were created correctly
+    expect(result.totalAccounts).toBe(3)
+    expect(result.results).toHaveLength(3)
+    
+    // Verify each account has a different address (derived from different indices)
+    const addresses = result.results.map(r => r.account.address)
+    expect(new Set(addresses).size).toBe(3) // All unique addresses
+
+    // Cleanup
+    signerSpy.mockRestore()
+  })
+
+  it('should handle signing errors gracefully for individual accounts', async () => {
+    const testProtostone = encodeRunestoneProtostone({
+      protostones: [
+        ProtoStone.message({
+          protocolTag: 1n,
+          edicts: [],
+          pointer: 0,
+          refundPointer: 0,
+          calldata: encipher([1n, 2n, 77n]),
+        }),
+      ],
+    }).encodedRunestone
+
+    // Create a signer that fails for the second account
+    let signCallCount = 0
+    const failingSignerSpy = jest.spyOn(Signer.prototype, 'signAllInputs')
+      .mockImplementation(async function(this: Signer, params) {
+        signCallCount++
+        if (signCallCount === 2) {
+          throw new Error('Can not sign for input #0 with the key 02de7f1a2e2cc4585ac55fd58b8464d3550c7932343ea7e3c9660b2f930199e6ef')
+        }
+        return {
+          signedPsbt: 'mock_signed_psbt',
+          signedHexPsbt: 'mock_signed_hex_psbt'
+        }
+      })
+
+    const result = await batchExecute({
+      utxos: testBatchUtxos,
+      protostone: testProtostone,
+      feeRate: 10,
+      account,
+      provider: mockBatchProvider,
+      signer: mockSigner,
+      accountCount: 3,
+      mnemonic
+    })
+
+    // Should have 1 failure and 2 successes
+    expect(result.totalAccounts).toBe(3)
+    expect(result.successfulExecutions).toBe(2)
+    expect(result.failedExecutions).toBe(1)
+    expect(result.summary.failed).toHaveLength(1)
+    expect(result.summary.failed[0].error).toContain('Can not sign for input')
+
+    // Cleanup
+    failingSignerSpy.mockRestore()
   })
 })

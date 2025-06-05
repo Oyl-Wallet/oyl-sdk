@@ -8,7 +8,7 @@ import {
   ProtoStone,
 } from 'alkanes/lib/index'
 import { ProtoruneEdict } from 'alkanes/lib/protorune/protoruneedict'
-import { Account, AlkaneId, Signer, mnemonicToAccount } from '..'
+import { Account, AlkaneId, Signer, mnemonicToAccount, getWalletPrivateKeys } from '..'
 import {
   findXAmountOfSats,
   formatInputsToSign,
@@ -991,8 +991,11 @@ export const batchExecute = async ({
       throw new Error('Account count must be at least 1')
     }
 
-    // Generate child accounts (account at index 0 is the main one)
-    const accounts: Account[] = [account]
+    // Generate child accounts and their corresponding signers
+    const accountsWithSigners: Array<{ account: Account; signer: Signer }> = [
+      { account, signer }
+    ]
+    
     for (let i = 1; i < accountCount; i++) {
       const childAccount = mnemonicToAccount({
         mnemonic,
@@ -1002,11 +1005,28 @@ export const batchExecute = async ({
           spendStrategy: account.spendStrategy,
         },
       })
-      accounts.push(childAccount)
+      
+      // Create a signer for this child account
+      const childPrivateKeys = getWalletPrivateKeys({
+        mnemonic,
+        opts: {
+          network: account.network,
+          index: i,
+        },
+      })
+      
+      const childSigner = new Signer(account.network, {
+        taprootPrivateKey: childPrivateKeys.taproot.privateKey,
+        segwitPrivateKey: childPrivateKeys.nativeSegwit.privateKey,
+        nestedSegwitPrivateKey: childPrivateKeys.nestedSegwit.privateKey,
+        legacyPrivateKey: childPrivateKeys.legacy.privateKey,
+      })
+      
+      accountsWithSigners.push({ account: childAccount, signer: childSigner })
     }
 
-    // Execute with each account concurrently
-    const executePromises = accounts.map(async (acc) => {
+    // Execute with each account and its corresponding signer concurrently
+    const executePromises = accountsWithSigners.map(async ({ account: acc, signer: accSigner }, index) => {
       try {
         const result = await execute({
           alkanesUtxos,
@@ -1015,14 +1035,14 @@ export const batchExecute = async ({
           protostone,
           provider,
           feeRate,
-          signer,
+          signer: accSigner,
           frontendFee,
           feeAddress,
           alkaneReceiverAddress,
         })
         return {
           account: {
-            index: accounts.indexOf(acc),
+            index,
             address: acc.taproot.address,
           },
           success: true,
@@ -1031,7 +1051,7 @@ export const batchExecute = async ({
       } catch (error) {
         return {
           account: {
-            index: accounts.indexOf(acc),
+            index,
             address: acc.taproot.address,
           },
           success: false,
@@ -1049,7 +1069,7 @@ export const batchExecute = async ({
         return {
           account: {
             index,
-            address: accounts[index].taproot.address,
+            address: accountsWithSigners[index].account.taproot.address,
           },
           success: false,
           error: result.reason?.message || 'Unknown error',
