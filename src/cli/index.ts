@@ -16,6 +16,7 @@ import {
   alkanePreviewRemoveLiquidity,
   alkaneList,
   alkaneBatchExecute,
+  alkaneEstimateFee,
 } from './alkane'
 import { init, genBlocks, sendFromFaucet } from './regtest'
 import { runeSend, runeMint, runeEtchCommit, runeEtchReveal } from './rune'
@@ -102,6 +103,7 @@ const alkaneCommand = new Command('alkane')
   .addCommand(alkaneGetAllPoolsDetails)
   .addCommand(alkanePreviewRemoveLiquidity)
   .addCommand(alkaneList)
+  .addCommand(alkaneEstimateFee)
   
   
 const providerCommand = new Command('provider')

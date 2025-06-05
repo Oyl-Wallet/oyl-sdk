@@ -16,3 +16,5 @@ export declare const alkaneSimulate: AlkanesCommand;
 export declare const alkaneGetAllPoolsDetails: AlkanesCommand;
 export declare const alkanePreviewRemoveLiquidity: AlkanesCommand;
 export declare const alkaneList: AlkanesCommand;
+export declare const alkaneBatchExecute: AlkanesCommand;
+export declare const alkaneEstimateFee: AlkanesCommand;

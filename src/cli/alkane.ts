@@ -943,3 +943,94 @@ export const alkaneBatchExecute = new AlkanesCommand('batch-execute')
       })
     )
   })
+
+/* @dev example call 
+  oyl alkane estimate-fee -data 2,1,77 -feeRate 10 -inputCount 1
+
+  Estimates the exact fee needed for an alkane transaction without change output
+*/
+export const alkaneEstimateFee = new AlkanesCommand('estimate-fee')
+  .requiredOption(
+    '-data, --calldata <calldata>',
+    'op code + params to be called on a contract',
+    (value, previous) => {
+      const items = value.split(',')
+      return previous ? previous.concat(items) : items
+    },
+    []
+  )
+  .option(
+    '-e, --edicts <edicts>',
+    'edicts for protostone',
+    (value, previous) => {
+      const items = value.split(',')
+      return previous ? previous.concat(items) : items
+    },
+    []
+  )
+  .option(
+    '-p, --provider <provider>',
+    'Network provider type (regtest, bitcoin)'
+  )
+  .requiredOption('-feeRate, --feeRate <feeRate>', 'fee rate in sat/vB')
+  .option(
+    '-inputCount, --input-count <inputCount>',
+    'number of inputs to estimate for (defaults to 1)',
+    '1'
+  )
+  .option(
+    '-frontendFee, --frontend-fee <frontendFee>',
+    'frontend fee in satoshis'
+  )
+  .option(
+    '-feeAddress, --fee-address <feeAddress>',
+    'address to receive frontend fee'
+  )
+  .option(
+    '-alkaneReceiver, --alkane-receiver <alkaneReceiver>',
+    'Address to receive alkane assets (defaults to wallet address)'
+  )
+  .action(async (options) => {
+    const wallet: Wallet = new Wallet(options)
+
+    const calldata: bigint[] = options.calldata.map((item) => BigInt(item))
+
+    const edicts: ProtoruneEdict[] = options.edicts.map((item) => {
+      const [block, tx, amount, output] = item
+        .split(':')
+        .map((part) => part.trim())
+      return {
+        id: new ProtoruneRuneId(u128(block), u128(tx)),
+        amount: amount ? BigInt(amount) : undefined,
+        output: output ? Number(output) : undefined,
+      }
+    })
+
+    const protostone: Buffer = encodeRunestoneProtostone({
+      protostones: [
+        ProtoStone.message({
+          protocolTag: 1n,
+          edicts,
+          pointer: 0,
+          refundPointer: 0,
+          calldata: encipher(calldata),
+        }),
+      ],
+    }).encodedRunestone
+
+    const result = await alkanes.estimateExecuteFeeWithoutChange({
+      feeRate: parseInt(options.feeRate),
+      inputCount: parseInt(options.inputCount) || 1,
+      frontendFee: options.frontendFee ? BigInt(options.frontendFee) : undefined,
+    })
+
+    console.log(JSON.stringify({
+      estimatedFee: result.estimatedFee,
+      totalRequired: result.totalRequired,
+      breakdown: result.breakdown,
+      recommendation: {
+        message: "Use this totalRequired amount for UTXO splitting to ensure exact balance for alkane execution without change",
+        splitAmount: result.totalRequired
+      }
+    }, null, 2))
+  })

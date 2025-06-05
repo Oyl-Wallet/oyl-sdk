@@ -47,3 +47,38 @@ export declare const minimumFee: ({ taprootInputCount, nonTaprootInputCount, out
     nonTaprootInputCount: number;
     outputCount: number;
 }) => number;
+interface SplitByAmountsAndAddresses {
+    mode: 'amounts_and_addresses';
+    amounts: number[];
+    addresses: string[];
+}
+interface SplitByAccountCount {
+    mode: 'auto_generate';
+    amount: number;
+    accountCount: number;
+    mnemonic: string;
+}
+type SplitConfig = SplitByAmountsAndAddresses | SplitByAccountCount;
+export declare const splitUtxos: ({ utxos, feeRate, account, provider, signer, splitConfig, fee, }: {
+    utxos: FormattedUtxo[];
+    feeRate: number;
+    account: Account;
+    provider: Provider;
+    signer: Signer;
+    splitConfig: SplitConfig;
+    fee?: number;
+}) => Promise<{
+    outputs: {
+        address: string;
+        amount: number;
+    }[];
+    totalSplitAmount: number;
+    fee: number;
+    changeAmount: number;
+    txId: string;
+    rawTx: string;
+    size: any;
+    weight: any;
+    satsPerVByte: string;
+}>;
+export {};

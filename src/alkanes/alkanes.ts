@@ -917,6 +917,48 @@ export const createTransactReveal = async ({
 export const toTxId = (rawLeTxid: string) =>
   Buffer.from(rawLeTxid, 'hex').reverse().toString('hex')
 
+export const estimateExecuteFeeWithoutChange = async ({
+  feeRate,
+  frontendFee,
+  inputCount = 1,
+}: {
+  feeRate: number
+  frontendFee?: bigint
+  inputCount?: number
+}) => {
+  const MIN_RELAY = 546n
+  const feeSatEffective: bigint =
+    frontendFee && frontendFee >= MIN_RELAY ? frontendFee : 0n
+
+  // Calculate outputs: alkane output + OP_RETURN + optional frontend fee
+  const outputCount = 2 + (feeSatEffective > 0n ? 1 : 0)
+  
+  // Estimate transaction size for given input count
+  const estimatedTxSize = minimumFee({
+    taprootInputCount: inputCount,
+    nonTaprootInputCount: 0,
+    outputCount,
+  })
+
+  const estimatedFee = Math.max(estimatedTxSize * feeRate, 250)
+  
+  // Calculate total amount needed: alkane output + frontend fee + transaction fee
+  const totalRequired = inscriptionSats + Number(feeSatEffective) + estimatedFee
+
+  return {
+    estimatedFee,
+    totalRequired,
+    breakdown: {
+      alkaneOutput: inscriptionSats,
+      frontendFee: Number(feeSatEffective),
+      transactionFee: estimatedFee,
+      inputCount,
+      outputCount,
+      estimatedTxSize,
+    }
+  }
+}
+
 export const batchExecute = async ({
   alkanesUtxos,
   utxos,
