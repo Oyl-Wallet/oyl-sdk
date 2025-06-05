@@ -234,7 +234,8 @@ class AutoClockInService {
         protostone,
         provider: walletInfo.provider,
         feeRate,
-        signer: walletInfo.signer
+        signer: walletInfo.signer,
+        alkaneReceiverAddress: walletInfo.address
       })
 
       this.log('info', `Clock-in transaction sent for wallet ${walletInfo.index}: ${result.txId}`)
