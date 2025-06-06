@@ -16,6 +16,8 @@ declare class AutoClockInService {
     private sendClockInTransactions;
     private monitorAndAccelerateTransactions;
     private accelerateTransactionsIfNeeded;
+    private executeRBFTransaction;
+    private createRBFWithSameInputs;
     private checkTransactionConfirmations;
     private sendWebhookNotification;
     private log;

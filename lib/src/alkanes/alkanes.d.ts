@@ -13,7 +13,7 @@ export interface ProtostoneMessage {
     calldata: bigint[];
 }
 export declare const encodeProtostone: ({ protocolTag, edicts, pointer, refundPointer, calldata, }: ProtostoneMessage) => Buffer;
-export declare const createExecutePsbt: ({ alkanesUtxos, frontendFee, feeAddress, utxos, account, protostone, provider, feeRate, fee, alkaneReceiverAddress, }: {
+export declare const createExecutePsbt: ({ alkanesUtxos, frontendFee, feeAddress, utxos, account, protostone, provider, feeRate, fee, alkaneReceiverAddress, enableRBF, }: {
     alkanesUtxos?: FormattedUtxo[];
     frontendFee?: bigint;
     feeAddress?: string;
@@ -24,6 +24,7 @@ export declare const createExecutePsbt: ({ alkanesUtxos, frontendFee, feeAddress
     feeRate?: number;
     fee?: number;
     alkaneReceiverAddress?: string;
+    enableRBF?: boolean;
 }) => Promise<{
     psbt: string;
     psbtHex: string;
@@ -125,7 +126,7 @@ export declare const executePsbt: ({ alkanesUtxos, utxos, account, protostone, p
     psbt: string;
     fee: number;
 }>;
-export declare const execute: ({ alkanesUtxos, utxos, account, protostone, provider, feeRate, signer, frontendFee, feeAddress, alkaneReceiverAddress, }: {
+export declare const execute: ({ alkanesUtxos, utxos, account, protostone, provider, feeRate, signer, frontendFee, feeAddress, alkaneReceiverAddress, enableRBF, }: {
     alkanesUtxos?: FormattedUtxo[];
     utxos: FormattedUtxo[];
     account: Account;
@@ -136,6 +137,7 @@ export declare const execute: ({ alkanesUtxos, utxos, account, protostone, provi
     frontendFee?: bigint;
     feeAddress?: string;
     alkaneReceiverAddress?: string;
+    enableRBF?: boolean;
 }) => Promise<{
     txId: string;
     rawTx: string;
