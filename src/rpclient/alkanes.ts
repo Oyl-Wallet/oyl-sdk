@@ -134,8 +134,6 @@ export class AlkanesRpc {
         console.error('Request Timeout:', error)
         throw new Error('Request timed out')
       }
-
-      console.error('Request Error:', error)
       throw error
     }
   }
@@ -407,6 +405,7 @@ export class AlkanesRpc {
     }
     return alkaneData
   }
+  
   async getAlkanes({
     limit,
     offset = 0,
@@ -420,15 +419,15 @@ export class AlkanesRpc {
       )
     }
 
-    const indices = Array.from({ length: limit }, (_, i) => i + offset)
+    const indices = Array.from({ length: limit }, (_, i) => (i + Number(offset)).toString())
 
     const processAlkane = async (
-      index: number
+      index: string
     ): Promise<AlkaneToken | null> => {
       const alkaneData: any = {
         id: {
           block: '2',
-          tx: index.toString(),
+          tx: index,
         },
       }
 
@@ -442,7 +441,7 @@ export class AlkanesRpc {
 
             try {
               const result = await this.simulate({
-                target: { block: '2', tx: index.toString() },
+                target: { block: '2', tx: index },
                 alkanes: [],
                 transaction: '0x',
                 block: '0x',
@@ -567,6 +566,204 @@ export class AlkanesRpc {
         )
       ).toString(),
       be: BigInt(addHexPrefix(v)).toString(),
+    }
+  }
+
+  async getAlkaneByIdMeta({
+    block,
+    tx,
+    dataOnly = false,
+  }: {
+    block: string
+    tx: string
+    dataOnly?: boolean
+  }): Promise<{
+    meta: any;
+    simulationResults: { [key: string]: any };
+    data: { [key: string]: any };
+  } | { data: { [key: string]: any } }> {
+    // First get the meta information
+    const metaResult = await this.meta({
+      target: { block, tx },
+      alkanes: [],
+      transaction: '0x',
+      block: '0x',
+      height: '20000',
+      txindex: 0,
+      inputs: [],
+      pointer: 0,
+      refundPointer: 0,
+      vout: 0,
+    })
+
+    if (!metaResult || !metaResult.methods) {
+      return dataOnly ? { data: { id: { block, tx } } } : {
+        meta: null,
+        simulationResults: null,
+        data: { id: { block, tx } }
+      }
+    }
+
+    // Get all opcodes from the methods
+    const opcodes = metaResult.methods.map(method => method.opcode)
+
+    // Simulate each opcode
+    const simulationResults: { [key: string]: any } = {}
+    const parsedResults: { [key: string]: any } = {}
+
+    // Process methods sequentially
+    for (const method of metaResult.methods) {
+      try {
+        const result = await this.simulate({
+          target: { block, tx },
+          alkanes: [],
+          transaction: '0x',
+          block: '0x',
+          height: '20000',
+          txindex: 0,
+          inputs: [method.opcode.toString()],
+          pointer: 0,
+          refundPointer: 0,
+          vout: 0,
+        })
+        simulationResults[method.opcode] = result
+
+        // Parse the result based on the return type
+        if (result.status === 0 && result.execution.error === null) {
+          switch (method.returns) {
+            case 'String':
+              parsedResults[method.name] = result.parsed?.string || ''
+              break
+            case 'u128':
+              parsedResults[method.name] = (result.parsed?.le || 0).toString()
+              break
+            case 'Vec<u8>':
+              if (method.name === 'pool_details') {
+                // Parse pool details into a structured format
+                const data = result.parsed?.bytes || '0x'
+                if (data !== '0x') {
+                  const decoder = new AlkanesAMMPoolDecoder()
+                  parsedResults[method.name] = decoder.decodePoolDetails(data)
+                } else {
+                  parsedResults[method.name] = null
+                }
+              } else {
+                parsedResults[method.name] = result.parsed?.bytes || '0x'
+              }
+              break
+            case 'u128, u128':
+              // Parse tuple of two u128 values
+              const data = result.parsed?.bytes || '0x'
+              if (data !== '0x') {
+                const buffer = Buffer.from(data.slice(2), 'hex')
+                // Check if the data is 32 bytes (normal) or 64 bytes (shifted)
+                if (buffer.length === 32) {
+                  // Normal case: two 16-byte numbers
+                  const firstValue = BigInt('0x' + Buffer.from(buffer.subarray(0, 16)).reverse().toString('hex')).toString()
+                  const secondValue = BigInt('0x' + Buffer.from(buffer.subarray(16, 32)).reverse().toString('hex')).toString()
+                  parsedResults[method.name] = [firstValue, secondValue]
+                } else if (buffer.length === 64) {
+                  // Shifted case: two 32-byte numbers
+                  const firstValue = BigInt('0x' + Buffer.from(buffer.subarray(0, 32)).reverse().toString('hex')).toString()
+                  const secondValue = BigInt('0x' + Buffer.from(buffer.subarray(32, 64)).reverse().toString('hex')).toString()
+                  parsedResults[method.name] = [firstValue, secondValue]
+                } else {
+                  // Fallback to using the parsed le value if buffer length is unexpected
+                  const leValue = result.parsed?.le || '0'
+                  parsedResults[method.name] = [leValue, '0']
+                }
+              } else {
+                parsedResults[method.name] = [null, null]
+              }
+              break
+            case 'void':
+              parsedResults[method.name] = null
+              break
+            default:
+              parsedResults[method.name] = result.parsed
+          }
+        } else {
+          parsedResults[method.name] = null
+        }
+      } catch (error) {
+        simulationResults[method.opcode] = null
+        parsedResults[method.name] = null
+      }
+    }
+
+    return dataOnly ? { data: { id: { block, tx }, ...parsedResults } } : {
+      meta: metaResult,
+      simulationResults,
+      data: { id: { block, tx }, ...parsedResults }
+    }
+  }
+
+  /**
+   * Get alkanes meta data
+   * @param limit - The number of alkanes to get
+   * @param offset - The offset to start from
+   * @param dataOnly - FALSE returns the meta data and simulation results
+   * @returns The meta data for the alkanes
+   */
+  async getAlkanesMeta({
+    block = '2',
+    limit = 10,
+    offset = 0,
+    dataOnly = true,
+  }: {
+    block?: string
+    limit?: number
+    offset?: number
+    dataOnly?: boolean
+  }): Promise<{
+    meta: any;
+    simulationResults: { [key: string]: any };
+    data: any[];
+  } | { data: any[] }> {
+    const MAX_LIMIT = 100
+
+    if (limit > MAX_LIMIT) {
+      throw new Error(
+        `Max limit of ${MAX_LIMIT} alkanes per call`
+      )
+    }
+
+    const indices = Array.from({ length: limit }, (_, i) => (i + Number(offset)).toString())
+    
+    const results = []
+    for (const index of indices) {
+      try {
+        const result = await this.getAlkaneByIdMeta({
+          block,
+          tx: index,
+          dataOnly: true
+        })
+        if (!result?.data) {
+          results.push({ id: { block, tx: index } })
+          continue
+        }
+        results.push({
+          id: { block, tx: index },
+          ...result.data
+        })
+      } catch (error) {
+        results.push({ id: { block, tx: index } })
+      }
+    }
+
+    results.sort((a, b) => {
+      const blockA = parseInt(a.id.block)
+      const blockB = parseInt(b.id.block)
+      if (blockA !== blockB) {
+        return blockA - blockB
+      }
+      return parseInt(a.id.tx) - parseInt(b.id.tx)
+    })
+
+    return dataOnly ? { data: results } : {
+      meta: null,
+      simulationResults: null,
+      data: results
     }
   }
 }

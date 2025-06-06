@@ -77,4 +77,42 @@ export declare class AlkanesRpc {
         le: string;
         be: string;
     };
+    getAlkaneByIdMeta({ block, tx, dataOnly, }: {
+        block: string;
+        tx: string;
+        dataOnly?: boolean;
+    }): Promise<{
+        meta: any;
+        simulationResults: {
+            [key: string]: any;
+        };
+        data: {
+            [key: string]: any;
+        };
+    } | {
+        data: {
+            [key: string]: any;
+        };
+    }>;
+    /**
+     * Get alkanes meta data
+     * @param limit - The number of alkanes to get
+     * @param offset - The offset to start from
+     * @param dataOnly - FALSE returns the meta data and simulation results
+     * @returns The meta data for the alkanes
+     */
+    getAlkanesMeta({ block, limit, offset, dataOnly, }: {
+        block?: string;
+        limit?: number;
+        offset?: number;
+        dataOnly?: boolean;
+    }): Promise<{
+        meta: any;
+        simulationResults: {
+            [key: string]: any;
+        };
+        data: any[];
+    } | {
+        data: any[];
+    }>;
 }
