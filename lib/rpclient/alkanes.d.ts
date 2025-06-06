@@ -77,6 +77,13 @@ export declare class AlkanesRpc {
         le: string;
         be: string;
     };
+    /**
+     * Get alkane meta data
+     * @param block - The block number
+     * @param tx - The transaction index
+     * @param dataOnly - FALSE also returns the ABI and simulation results
+     * @returns The meta data for the alkane
+     */
     getAlkaneByIdMeta({ block, tx, dataOnly, }: {
         block: string;
         tx: string;
@@ -98,7 +105,7 @@ export declare class AlkanesRpc {
      * Get alkanes meta data
      * @param limit - The number of alkanes to get
      * @param offset - The offset to start from
-     * @param dataOnly - FALSE returns the meta data and simulation results
+     * @param dataOnly - FALSE also returns the ABI and simulation results
      * @returns The meta data for the alkanes
      */
     getAlkanesMeta({ block, limit, offset, dataOnly, }: {
