@@ -341,6 +341,7 @@ export const alkaneExecute = new AlkanesCommand('execute')
         signer: wallet.signer,
         provider: wallet.provider,
         alkaneReceiverAddress: options.alkaneReceiver,
+        enableRBF: false,
       })
     )
   })

@@ -37,6 +37,11 @@ interface TransactionInfo {
   feeRate: number
   timestamp: number
   confirmed: boolean
+  // RBF needed info
+  originalUtxos: any[]
+  protostone: Buffer
+  accelerationAttempts: number
+  lastAccelerationTime?: number
 }
 
 class AutoClockInService {
@@ -136,12 +141,36 @@ class AutoClockInService {
 
   private async getCurrentBlockHeight(): Promise<number> {
     try {
-      // Use the first wallet's provider to get block height
-      const response = await fetch('https://blockstream.info/api/blocks/tip/height')
-      const blockHeight = await response.json()
+      // Try multiple APIs for redundancy
+      const apis = [
+        'https://blockstream.info/api/blocks/tip/height',
+        'https://mempool.space/api/blocks/tip/height'
+      ]
+      
+      for (const api of apis) {
+        try {
+          const response = await fetch(api)
+          if (response.ok) {
+            const blockHeight = await response.json()
+            this.log('debug', `Got block height ${blockHeight} from ${api}`)
+            return blockHeight
+          }
+        } catch (apiError) {
+          this.log('warn', `Failed to get block height from ${api}: ${apiError.message}`)
+          continue
+        }
+      }
+      
+      // Fallback to provider sandshrew
+      const provider = this.wallets[0].provider
+      const response = await provider.sandshrew.multiCall([
+        ['btc_getblockcount', []]
+      ])
+      const blockHeight = response[0] as number
+      this.log('debug', `Got block height ${blockHeight} from provider sandshrew`)
       return blockHeight
     } catch (error) {
-      this.log('error', `Failed to get block height: ${error.message}`)
+      this.log('error', `Failed to get block height from all sources: ${error.message}`)
       throw error
     }
   }
@@ -210,7 +239,7 @@ class AutoClockInService {
     }
   }
 
-  private async executeClockIn(walletInfo: WalletInfo, feeRate: number): Promise<string | null> {
+  private async executeClockIn(walletInfo: WalletInfo, feeRate: number): Promise<{txId: string, utxos: any[], protostone: Buffer} | null> {
     try {
       this.log('info', `Executing clock-in for wallet ${walletInfo.index} with fee rate ${feeRate}`)
 
@@ -235,11 +264,16 @@ class AutoClockInService {
         provider: walletInfo.provider,
         feeRate,
         signer: walletInfo.signer,
-        alkaneReceiverAddress: walletInfo.address
+        alkaneReceiverAddress: walletInfo.address,
+        enableRBF: true
       })
 
       this.log('info', `Clock-in transaction sent for wallet ${walletInfo.index}: ${result.txId}`)
-      return result.txId
+      return {
+        txId: result.txId,
+        utxos: accountUtxos,
+        protostone
+      }
     } catch (error) {
       this.log('error', `Failed to execute clock-in for wallet ${walletInfo.index}: ${error.message}`)
       return null
@@ -257,17 +291,20 @@ class AutoClockInService {
 
     // Execute clock-in for all wallets concurrently
     const executePromises = this.wallets.map(async (walletInfo) => {
-      const txId = await this.executeClockIn(walletInfo, initialFeeRate)
-      if (txId) {
-        this.currentTransactions.set(txId, {
-          txId,
+      const result = await this.executeClockIn(walletInfo, initialFeeRate)
+      if (result) {
+        this.currentTransactions.set(result.txId, {
+          txId: result.txId,
           wallet: walletInfo,
           feeRate: initialFeeRate,
           timestamp: Date.now(),
-          confirmed: false
+          confirmed: false,
+          originalUtxos: result.utxos,
+          protostone: result.protostone,
+          accelerationAttempts: 0
         })
       }
-      return { wallet: walletInfo, txId }
+      return { wallet: walletInfo, txId: result?.txId }
     })
 
     const results = await Promise.allSettled(executePromises)
@@ -323,6 +360,13 @@ class AutoClockInService {
           return
         }
 
+        // If target block is far away, check for confirmations anyway
+        if (currentHeight > targetHeight) {
+          this.log('warn', `Current height ${currentHeight} is beyond target ${targetHeight}, checking confirmations anyway`)
+          await this.checkTransactionConfirmations(targetHeight)
+          return
+        }
+
         // Check if we need to accelerate transactions
         const medianFeeRate = await this.getMedianFeeRate()
         await this.accelerateTransactionsIfNeeded(medianFeeRate)
@@ -358,26 +402,121 @@ class AutoClockInService {
           this.config.maxFeeRate
         )
 
-        if (newFeeRate > tx.feeRate) {
-          this.log('info', `Accelerating transaction ${tx.txId} from ${tx.feeRate} to ${newFeeRate} sat/vB`)
+        if (newFeeRate > tx.feeRate && tx.accelerationAttempts < 3) {
+          // Prevent too frequent acceleration attempts
+          const timeSinceLastAcceleration = tx.lastAccelerationTime ? 
+            Date.now() - tx.lastAccelerationTime : Number.MAX_SAFE_INTEGER
+          
+          if (timeSinceLastAcceleration < 300000) { // 5 minutes
+            this.log('debug', `Skipping acceleration for ${tx.txId} - too recent`)
+            continue
+          }
+
+          this.log('info', `🚀 Accelerating transaction ${tx.txId} from ${tx.feeRate} to ${newFeeRate} sat/vB (attempt ${tx.accelerationAttempts + 1})`)
           
           try {
-            // Note: This would require RBF (Replace-By-Fee) implementation
-            // For now, we just log the intent
-            this.log('info', `Would accelerate ${tx.txId} to ${newFeeRate} sat/vB`)
+            const newTxId = await this.executeRBFTransaction(tx, newFeeRate)
             
-            // Update the recorded fee rate
-            tx.feeRate = newFeeRate
+            if (newTxId) {
+              // Remove old transaction and add new one
+              this.currentTransactions.delete(tx.txId)
+              this.currentTransactions.set(newTxId, {
+                ...tx,
+                txId: newTxId,
+                feeRate: newFeeRate,
+                accelerationAttempts: tx.accelerationAttempts + 1,
+                lastAccelerationTime: Date.now()
+              })
+              
+              this.log('info', `✅ Successfully accelerated transaction ${tx.txId} -> ${newTxId}`)
+            } else {
+              this.log('warn', `❌ Failed to accelerate transaction ${tx.txId}`)
+              tx.accelerationAttempts++
+              tx.lastAccelerationTime = Date.now()
+            }
           } catch (error) {
-            this.log('error', `Failed to accelerate transaction ${tx.txId}: ${error.message}`)
+            this.log('error', `❌ Error accelerating transaction ${tx.txId}: ${error.message}`)
+            tx.accelerationAttempts++
+            tx.lastAccelerationTime = Date.now()
           }
         }
       }
     }
   }
 
+  private async executeRBFTransaction(originalTx: TransactionInfo, newFeeRate: number): Promise<string | null> {
+    try {
+      this.log('debug', `Creating RBF transaction for ${originalTx.txId} with fee rate ${newFeeRate}`)
+      
+      // For true RBF, we need to:
+      // 1. Use the same UTXOs (inputs)
+      // 2. Set sequence < 0xfffffffe (RBF signal)
+      // 3. Increase the fee by adjusting outputs
+      
+      // First, try to get fresh UTXOs to avoid conflicts
+      const { accountUtxos: freshUtxos } = await utxo.accountUtxos({
+        account: originalTx.wallet.account,
+        provider: originalTx.wallet.provider
+      })
+
+      // Filter out UTXOs that might still be locked by pending transactions
+      const availableUtxos = freshUtxos.filter(utxo => 
+        !originalTx.originalUtxos.some(orig => 
+          orig.txId === utxo.txId && orig.outputIndex === utxo.outputIndex
+        )
+      )
+
+      if (availableUtxos.length === 0) {
+        this.log('warn', `No available UTXOs for wallet ${originalTx.wallet.index} - using original UTXOs for RBF`)
+        // If no fresh UTXOs, create a true RBF transaction using the same UTXOs
+        return await this.createRBFWithSameInputs(originalTx, newFeeRate)
+      }
+
+      // If we have fresh UTXOs, create a new transaction with RBF enabled
+      const result = await alkanes.execute({
+        utxos: availableUtxos,
+        account: originalTx.wallet.account,
+        protostone: originalTx.protostone,
+        provider: originalTx.wallet.provider,
+        feeRate: newFeeRate,
+        signer: originalTx.wallet.signer,
+        alkaneReceiverAddress: originalTx.wallet.address,
+        enableRBF: true
+      })
+
+      return result.txId
+    } catch (error) {
+      this.log('error', `Failed to create RBF transaction: ${error.message}`)
+      return null
+    }
+  }
+
+  private async createRBFWithSameInputs(originalTx: TransactionInfo, newFeeRate: number): Promise<string | null> {
+    try {
+      this.log('debug', `Creating true RBF transaction using same inputs with fee rate ${newFeeRate}`)
+      
+      // Use the original UTXOs for true RBF replacement
+      const result = await alkanes.execute({
+        utxos: originalTx.originalUtxos,
+        account: originalTx.wallet.account,
+        protostone: originalTx.protostone,
+        provider: originalTx.wallet.provider,
+        feeRate: newFeeRate,
+        signer: originalTx.wallet.signer,
+        alkaneReceiverAddress: originalTx.wallet.address,
+        enableRBF: true
+      })
+      
+      this.log('info', `✅ Created true RBF transaction: ${originalTx.txId} -> ${result.txId}`)
+      return result.txId
+    } catch (error) {
+      this.log('error', `Failed to create true RBF transaction: ${error.message}`)
+      return null
+    }
+  }
+
   private async checkTransactionConfirmations(targetHeight: number): Promise<void> {
-    this.log('info', `Checking transaction confirmations for block ${targetHeight}`)
+    this.log('info', `Checking transaction confirmations for target height ${targetHeight}`)
 
     const pendingTransactions = Array.from(this.currentTransactions.values())
       .filter(tx => !tx.confirmed)
@@ -387,6 +526,9 @@ class AutoClockInService {
       return
     }
 
+    let targetBlockConfirmed = 0
+    let otherBlockConfirmed = 0
+
     for (const tx of pendingTransactions) {
       try {
         const response = await fetch(`https://blockstream.info/api/tx/${tx.txId}`)
@@ -394,28 +536,42 @@ class AutoClockInService {
         if (response.ok) {
           const txInfo = await response.json()
           
-          if (txInfo.status && txInfo.status.confirmed && txInfo.status.block_height === targetHeight) {
+          if (txInfo.status && txInfo.status.confirmed) {
             tx.confirmed = true
-            this.log('info', `Transaction ${tx.txId} confirmed in target block ${targetHeight}`)
-          } else if (txInfo.status && txInfo.status.confirmed) {
-            this.log('warn', `Transaction ${tx.txId} confirmed in block ${txInfo.status.block_height}, not target block ${targetHeight}`)
+            const confirmedHeight = txInfo.status.block_height
+            
+            if (confirmedHeight === targetHeight) {
+              targetBlockConfirmed++
+              this.log('info', `✅ Transaction ${tx.txId} confirmed in TARGET block ${targetHeight}`)
+            } else {
+              otherBlockConfirmed++
+              this.log('info', `✅ Transaction ${tx.txId} confirmed in block ${confirmedHeight} (target was ${targetHeight})`)
+            }
+          } else {
+            this.log('debug', `Transaction ${tx.txId} still pending`)
           }
         }
       } catch (error) {
-        this.log('debug', `Transaction ${tx.txId} not found or not confirmed yet`)
+        this.log('debug', `Could not check transaction ${tx.txId}: ${error.message}`)
       }
     }
 
-    const confirmedCount = Array.from(this.currentTransactions.values())
-      .filter(tx => tx.confirmed).length
+    const totalConfirmed = targetBlockConfirmed + otherBlockConfirmed
+    const stillPending = this.wallets.length - totalConfirmed
 
-    this.log('info', `Clock-in round completed: ${confirmedCount}/${this.wallets.length} transactions confirmed`)
+    this.log('info', `📊 Clock-in round summary:`)
+    this.log('info', `   Target block (${targetHeight}): ${targetBlockConfirmed} transactions`)
+    this.log('info', `   Other blocks: ${otherBlockConfirmed} transactions`)
+    this.log('info', `   Still pending: ${stillPending} transactions`)
+    this.log('info', `   Total confirmed: ${totalConfirmed}/${this.wallets.length}`)
 
     if (this.config.webhookUrl) {
       await this.sendWebhookNotification({
         type: 'clock_in_completed',
         targetHeight,
-        confirmedCount,
+        targetBlockConfirmed,
+        otherBlockConfirmed,
+        totalConfirmed,
         totalWallets: this.wallets.length
       })
     }
@@ -465,7 +621,13 @@ class AutoClockInService {
 
     this.isRunning = true
     this.log('info', 'Starting Auto Clock-In Service')
-    this.log('info', `Configuration: ${JSON.stringify(this.config, null, 2)}`)
+    
+    // Create a JSON-serializable version of config
+    const configForLogging = {
+      ...this.config,
+      calldata: this.config.calldata.map(x => x.toString()) // Convert BigInt to string
+    }
+    this.log('info', `Configuration: ${JSON.stringify(configForLogging, null, 2)}`)
 
     // Initial wallet balance check
     await this.checkWalletBalances()

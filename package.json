@@ -16,7 +16,10 @@
     "oyl": "oyl",
     "clock-in": "node lib/scripts/auto-clock-in.js",
     "test-config": "node lib/scripts/test-config.js",
-    "test-fees": "node lib/scripts/test-fee-rates.js"
+    "test-fees": "node lib/scripts/test-fee-rates.js",
+    "check-clock-status": "npx ts-node scripts/check-clock-in-status.ts",
+    "test-rbf-logic": "npx ts-node scripts/test-rbf-acceleration.ts",
+    "view-rbf-plan": "cat scripts/RBF_IMPLEMENTATION_PLAN.md"
   },
   "bin": {
     "oyl-cli": "./bin/cli.js",

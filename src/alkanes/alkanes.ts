@@ -65,6 +65,7 @@ export const createExecutePsbt = async ({
   feeRate,
   fee = 0,
   alkaneReceiverAddress,
+  enableRBF = false,
 }: {
   alkanesUtxos?: FormattedUtxo[]
   frontendFee?: bigint
@@ -76,6 +77,7 @@ export const createExecutePsbt = async ({
   feeRate?: number
   fee?: number
   alkaneReceiverAddress?: string
+  enableRBF?: boolean
 }) => {
   try {
     const SAT_PER_VBYTE = feeRate ?? 1
@@ -123,11 +125,11 @@ export const createExecutePsbt = async ({
 
     if (alkanesUtxos) {
       for (const utxo of alkanesUtxos) {
-        await addInputForUtxo(psbt, utxo, account, provider)
+        await addInputForUtxo(psbt, utxo, account, provider, enableRBF)
       }
     }
     for (const utxo of gatheredUtxos.utxos) {
-      await addInputForUtxo(psbt, utxo, account, provider)
+      await addInputForUtxo(psbt, utxo, account, provider, enableRBF)
     }
 
     psbt.addOutput({ 
@@ -182,8 +184,12 @@ async function addInputForUtxo(
   psbt: bitcoin.Psbt,
   utxo: FormattedUtxo,
   account: Account,
-  provider: Provider
+  provider: Provider,
+  enableRBF: boolean = false
 ) {
+  // Set sequence for RBF: 0xfffffffd enables RBF, 0xffffffff disables it
+  const sequence = enableRBF ? 0xfffffffd : 0xffffffff
+  
   const type = getAddressType(utxo.address)
   switch (type) {
     case 0: {
@@ -193,6 +199,7 @@ async function addInputForUtxo(
         hash: utxo.txId,
         index: +utxo.outputIndex,
         nonWitnessUtxo: Buffer.from(prevHex, 'hex'),
+        sequence: sequence,
       })
       break
     }
@@ -206,6 +213,7 @@ async function addInputForUtxo(
         hash: utxo.txId,
         index: +utxo.outputIndex,
         redeemScript: redeem,
+        sequence: sequence,
         witnessUtxo: {
           value: utxo.satoshis,
           script: bitcoin.script.compile([
@@ -223,6 +231,7 @@ async function addInputForUtxo(
       psbt.addInput({
         hash: utxo.txId,
         index: +utxo.outputIndex,
+        sequence: sequence,
         witnessUtxo: {
           value: utxo.satoshis,
           script: Buffer.from(utxo.scriptPk, 'hex'),
@@ -680,6 +689,7 @@ export const actualExecuteFee = async ({
     provider,
     feeRate,
     alkaneReceiverAddress,
+    enableRBF: false,
   })
 
   const { fee: estimatedFee } = await getEstimatedFee({
@@ -699,6 +709,7 @@ export const actualExecuteFee = async ({
     feeRate,
     fee: estimatedFee,
     alkaneReceiverAddress,
+    enableRBF: false,
   })
 
   const { fee: finalFee, vsize } = await getEstimatedFee({
@@ -754,6 +765,7 @@ export const executePsbt = async ({
     feeRate,
     fee,
     alkaneReceiverAddress,
+    enableRBF: false,
   })
 
   return { psbt: finalPsbt, fee }
@@ -770,6 +782,7 @@ export const execute = async ({
   frontendFee,
   feeAddress,
   alkaneReceiverAddress,
+  enableRBF = false,
 }: {
   alkanesUtxos?: FormattedUtxo[]
   utxos: FormattedUtxo[]
@@ -781,6 +794,7 @@ export const execute = async ({
   frontendFee?: bigint
   feeAddress?: string
   alkaneReceiverAddress?: string
+  enableRBF?: boolean
 }) => {
   const { fee } = await actualExecuteFee({
     alkanesUtxos,
@@ -805,6 +819,7 @@ export const execute = async ({
     feeRate,
     fee,
     alkaneReceiverAddress,
+    enableRBF,
   })
 
   const { signedPsbt } = await signer.signAllInputs({
