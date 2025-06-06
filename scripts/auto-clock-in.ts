@@ -454,37 +454,40 @@ class AutoClockInService {
       // 3. Increase the fee by adjusting outputs
       
       // First, try to get fresh UTXOs to avoid conflicts
-      const { accountUtxos: freshUtxos } = await utxo.accountUtxos({
-        account: originalTx.wallet.account,
-        provider: originalTx.wallet.provider
-      })
+      // const { accountUtxos: freshUtxos } = await utxo.accountUtxos({
+      //   account: originalTx.wallet.account,
+      //   provider: originalTx.wallet.provider
+      // })
 
-      // Filter out UTXOs that might still be locked by pending transactions
-      const availableUtxos = freshUtxos.filter(utxo => 
-        !originalTx.originalUtxos.some(orig => 
-          orig.txId === utxo.txId && orig.outputIndex === utxo.outputIndex
-        )
-      )
+      // // Filter out UTXOs that might still be locked by pending transactions
+      // const availableUtxos = freshUtxos.filter(utxo => 
+      //   !originalTx.originalUtxos.some(orig => 
+      //     orig.txId === utxo.txId && orig.outputIndex === utxo.outputIndex
+      //   )
+      // )
 
-      if (availableUtxos.length === 0) {
-        this.log('warn', `No available UTXOs for wallet ${originalTx.wallet.index} - using original UTXOs for RBF`)
-        // If no fresh UTXOs, create a true RBF transaction using the same UTXOs
-        return await this.createRBFWithSameInputs(originalTx, newFeeRate)
-      }
+      // if (availableUtxos.length === 0) {
+      //   this.log('warn', `No available UTXOs for wallet ${originalTx.wallet.index} - using original UTXOs for RBF`)
+      //   // If no fresh UTXOs, create a true RBF transaction using the same UTXOs
+      //   return await this.createRBFWithSameInputs(originalTx, newFeeRate)
+      // }
 
-      // If we have fresh UTXOs, create a new transaction with RBF enabled
-      const result = await alkanes.execute({
-        utxos: availableUtxos,
-        account: originalTx.wallet.account,
-        protostone: originalTx.protostone,
-        provider: originalTx.wallet.provider,
-        feeRate: newFeeRate,
-        signer: originalTx.wallet.signer,
-        alkaneReceiverAddress: originalTx.wallet.address,
-        enableRBF: true
-      })
+      // // If we have fresh UTXOs, create a new transaction with RBF enabled
+      // const result = await alkanes.execute({
+      //   utxos: availableUtxos,
+      //   account: originalTx.wallet.account,
+      //   protostone: originalTx.protostone,
+      //   provider: originalTx.wallet.provider,
+      //   feeRate: newFeeRate,
+      //   signer: originalTx.wallet.signer,
+      //   alkaneReceiverAddress: originalTx.wallet.address,
+      //   enableRBF: true
+      // })
 
-      return result.txId
+      // return result.txId
+
+      return await this.createRBFWithSameInputs(originalTx, newFeeRate)
+      
     } catch (error) {
       this.log('error', `Failed to create RBF transaction: ${error.message}`)
       return null
