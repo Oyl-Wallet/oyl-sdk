@@ -18,7 +18,7 @@ import { ProtoruneRuneId } from 'alkanes/lib/protorune/protoruneruneid'
 import { u128 } from '@magiceden-oss/runestone-lib/dist/src/integer'
 import { createNewPool } from '../amm/factory'
 import { removeLiquidity, addLiquidity, swap } from '../amm/pool'
-import { packUTF8 } from '../shared/utils'
+import { packUTF8, inscriptionSats } from '../shared/utils'
 import { AccountUtxoPortfolio, FormattedUtxo } from '../utxo/types'
 /* @dev example call
   oyl alkane trace -params '{"txid":"e6561c7a8f80560c30a113c418bb56bde65694ac2b309a68549f35fdf2e785cb","vout":0}'
@@ -1050,6 +1050,12 @@ export const alkaneEstimateFee = new AlkanesCommand('estimate-fee')
   .action(async (options) => {
     const wallet: Wallet = new Wallet(options)
 
+    // Get real UTXOs from the account
+    const { accountUtxos } = await utxo.accountUtxos({
+      account: wallet.account,
+      provider: wallet.provider,
+    })
+
     const calldata: bigint[] = options.calldata.map((item) => BigInt(item))
 
     const edicts: ProtoruneEdict[] = options.edicts.map((item) => {
@@ -1075,19 +1081,32 @@ export const alkaneEstimateFee = new AlkanesCommand('estimate-fee')
       ],
     }).encodedRunestone
 
-    const result = await alkanes.estimateExecuteFeeWithoutChange({
+    // Use actualExecuteFee for precise calculation with real UTXOs
+    const result = await alkanes.actualExecuteFee({
+      utxos: accountUtxos,
+      account: wallet.account,
+      protostone,
+      provider: wallet.provider,
       feeRate: parseInt(options.feeRate),
-      inputCount: parseInt(options.inputCount) || 1,
       frontendFee: options.frontendFee ? BigInt(options.frontendFee) : undefined,
+      feeAddress: options.feeAddress,
+      alkaneReceiverAddress: options.alkaneReceiver,
     })
 
+    const totalRequired = inscriptionSats + Number(options.frontendFee || 0) + result.fee
+
     console.log(JSON.stringify({
-      estimatedFee: result.estimatedFee,
-      totalRequired: result.totalRequired,
-      breakdown: result.breakdown,
+      estimatedFee: result.fee,
+      totalRequired: totalRequired,
+      breakdown: {
+        alkaneOutput: inscriptionSats,
+        frontendFee: Number(options.frontendFee || 0),
+        transactionFee: result.fee,
+        vsize: result.vsize,
+      },
       recommendation: {
         message: "Use this totalRequired amount for UTXO splitting to ensure exact balance for alkane execution without change",
-        splitAmount: result.totalRequired
+        splitAmount: totalRequired
       }
     }, null, 2))
   })

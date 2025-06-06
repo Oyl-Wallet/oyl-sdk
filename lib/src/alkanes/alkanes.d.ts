@@ -160,22 +160,6 @@ export declare const createTransactReveal: ({ protostone, receiverAddress, scrip
     fee: number;
 }>;
 export declare const toTxId: (rawLeTxid: string) => string;
-export declare const estimateExecuteFeeWithoutChange: ({ feeRate, frontendFee, inputCount, }: {
-    feeRate: number;
-    frontendFee?: bigint;
-    inputCount?: number;
-}) => Promise<{
-    estimatedFee: number;
-    totalRequired: number;
-    breakdown: {
-        alkaneOutput: number;
-        frontendFee: number;
-        transactionFee: number;
-        inputCount: number;
-        outputCount: number;
-        estimatedTxSize: number;
-    };
-}>;
 export declare const batchExecute: ({ alkanesUtxos, utxos, account, protostone, provider, feeRate, signer, frontendFee, feeAddress, accountCount, mnemonic, alkaneReceiverAddress, }: {
     alkanesUtxos?: FormattedUtxo[];
     utxos: FormattedUtxo[];
