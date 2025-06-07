@@ -14,9 +14,10 @@ interface ClockInConfig {
   calldata: bigint[]
   startHeight: number
   interval: number
-  initialFeeMultiplier: number
-  accelerateFeeMultiplier: number
-  maxFeeIncrease: number
+  // NOTE: Following multipliers are preserved for compatibility but not used in new fee logic
+  initialFeeMultiplier: number // DEPRECATED: New logic uses median fee directly
+  accelerateFeeMultiplier: number // DEPRECATED: New logic accelerates to median fee
+  maxFeeIncrease: number // Still used as a safety limit
   maxFeeRate: number
   blockCheckInterval: number
   logLevel: string
@@ -29,6 +30,12 @@ interface WalletInfo {
   provider: Provider
   address: string
   index: number
+}
+
+interface FeeRateInfo {
+  medianFee: number
+  feeRange: number[]
+  timestamp: number
 }
 
 interface TransactionInfo {
@@ -70,9 +77,10 @@ class AutoClockInService {
         .map(x => BigInt(x.trim())),
       startHeight: parseInt(process.env.CLOCK_IN_START_HEIGHT || '899573'),
       interval: parseInt(process.env.CLOCK_IN_INTERVAL || '144'),
-      initialFeeMultiplier: parseFloat(process.env.INITIAL_FEE_MULTIPLIER || '1.5'),
-      accelerateFeeMultiplier: parseFloat(process.env.ACCELERATE_FEE_MULTIPLIER || '1.2'),
-      maxFeeIncrease: parseInt(process.env.MAX_FEE_INCREASE || '2'),
+      // DEPRECATED: New fee logic doesn't use these multipliers
+      initialFeeMultiplier: parseFloat(process.env.INITIAL_FEE_MULTIPLIER || '1.0'), // Changed default to 1.0
+      accelerateFeeMultiplier: parseFloat(process.env.ACCELERATE_FEE_MULTIPLIER || '1.0'), // Changed default to 1.0
+      maxFeeIncrease: parseInt(process.env.MAX_FEE_INCREASE || '50'), // Increased for safety
       maxFeeRate: parseInt(process.env.MAX_FEE_RATE || '100'),
       blockCheckInterval: parseInt(process.env.BLOCK_CHECK_INTERVAL || '10000'),
       logLevel: process.env.LOG_LEVEL || 'info',
@@ -134,10 +142,6 @@ class AutoClockInService {
     return startHeight + (cyclesPassed + 1) * interval
   }
 
-  private isClockInBlock(height: number): boolean {
-    const { startHeight, interval } = this.config
-    return height >= startHeight && (height - startHeight) % interval === 0
-  }
 
   private async getCurrentBlockHeight(): Promise<number> {
     try {
@@ -175,7 +179,7 @@ class AutoClockInService {
     }
   }
 
-  private async getMedianFeeRate(): Promise<number> {
+  private async getFeeRateInfo(): Promise<FeeRateInfo> {
     try {
       // Use mempool.space API to get more accurate fee rates
       const response = await fetch('https://mempool.space/api/v1/fees/mempool-blocks')
@@ -187,17 +191,26 @@ class AutoClockInService {
       const mempoolBlocks = await response.json()
       
       if (mempoolBlocks && mempoolBlocks.length > 0) {
-        // Get the median fee rate from the first mempool block (next block)
+        // Get the fee information from the first mempool block (next block)
         const nextBlock = mempoolBlocks[0]
-        const medianFeeRate = nextBlock.medianFee || 2
+        const medianFee = nextBlock.medianFee || 2
+        const feeRange = nextBlock.feeRange || [1, 2, 5, 10, 20]
         
-        // Log additional mempool information for monitoring
-        this.log('debug', `Mempool block info - Median: ${medianFeeRate} sat/vB, Range: ${nextBlock.feeRange?.[0]}-${nextBlock.feeRange?.[nextBlock.feeRange?.length - 1]} sat/vB, Total fees: ${nextBlock.totalFees} sats`)
+        // Log detailed mempool information for monitoring
+        this.log('debug', `Mempool block info - Median: ${medianFee} sat/vB, Range: [${feeRange.join(', ')}] sat/vB, Total fees: ${nextBlock.totalFees} sats`)
         
-        return medianFeeRate
+        return {
+          medianFee,
+          feeRange,
+          timestamp: Date.now()
+        }
       } else {
         this.log('warn', 'No mempool blocks data available, using fallback')
-        return 10
+        return {
+          medianFee: 10,
+          feeRange: [1, 5, 10, 15, 25],
+          timestamp: Date.now()
+        }
       }
     } catch (error) {
       this.log('error', `Failed to get mempool fee rates: ${error.message}`)
@@ -208,13 +221,22 @@ class AutoClockInService {
         const feeEstimates = await provider.esplora.getFeeEstimates()
         const fallbackRate = feeEstimates['1'] || 10
         this.log('info', `Using fallback fee rate: ${fallbackRate} sat/vB`)
-        return fallbackRate
+        return {
+          medianFee: fallbackRate,
+          feeRange: [1, Math.max(1, fallbackRate - 2), fallbackRate, fallbackRate + 5, fallbackRate + 10],
+          timestamp: Date.now()
+        }
       } catch (fallbackError) {
         this.log('error', `Fallback fee estimate also failed: ${fallbackError.message}`)
-        return 10 // Final fallback
+        return {
+          medianFee: 10,
+          feeRange: [1, 5, 10, 15, 25],
+          timestamp: Date.now()
+        }
       }
     }
   }
+
 
   private async checkWalletBalances(): Promise<void> {
     this.log('info', 'Checking wallet balances...')
@@ -283,11 +305,12 @@ class AutoClockInService {
   private async sendClockInTransactions(targetHeight: number): Promise<void> {
     this.log('info', `Sending clock-in transactions for target height ${targetHeight}`)
 
-    // Get current median fee rate
-    const medianFeeRate = await this.getMedianFeeRate()
-    const initialFeeRate = Math.ceil(medianFeeRate * this.config.initialFeeMultiplier)
+    // Get current fee rate information
+    const feeInfo = await this.getFeeRateInfo()
+    // NEW LOGIC: Use median fee rate directly as initial fee rate (no multiplier)
+    const initialFeeRate = Math.ceil(feeInfo.medianFee)
     
-    this.log('info', `Using initial fee rate: ${initialFeeRate} sat/vB (median: ${medianFeeRate})`)
+    this.log('info', `Using initial fee rate: ${initialFeeRate} sat/vB (median: ${feeInfo.medianFee}, range: [${feeInfo.feeRange.join(', ')}])`)
 
     // Execute clock-in for all wallets concurrently
     const executePromises = this.wallets.map(async (walletInfo) => {
@@ -329,7 +352,8 @@ class AutoClockInService {
         targetHeight,
         successCount,
         failureCount,
-        feeRate: initialFeeRate
+        feeRate: initialFeeRate,
+        feeInfo
       })
     }
   }
@@ -368,8 +392,8 @@ class AutoClockInService {
         }
 
         // Check if we need to accelerate transactions
-        const medianFeeRate = await this.getMedianFeeRate()
-        await this.accelerateTransactionsIfNeeded(medianFeeRate)
+        const currentFeeInfo = await this.getFeeRateInfo()
+        await this.accelerateTransactionsIfNeeded(currentFeeInfo)
 
         // Continue monitoring
         setTimeout(monitorLoop, checkInterval)
@@ -382,7 +406,7 @@ class AutoClockInService {
     await monitorLoop()
   }
 
-  private async accelerateTransactionsIfNeeded(currentMedianFeeRate: number): Promise<void> {
+  private async accelerateTransactionsIfNeeded(currentFeeInfo: FeeRateInfo): Promise<void> {
     const pendingTransactions = Array.from(this.currentTransactions.values())
       .filter(tx => !tx.confirmed)
 
@@ -391,14 +415,20 @@ class AutoClockInService {
     }
 
     this.log('debug', `Checking ${pendingTransactions.length} pending transactions for acceleration`)
+    this.log('debug', `Current fee info - Median: ${currentFeeInfo.medianFee}, Range: [${currentFeeInfo.feeRange.join(', ')}]`)
+
+    // NEW LOGIC: Use feeRange[1] as the threshold for acceleration
+    const accelerationThreshold = currentFeeInfo.feeRange[1] || currentFeeInfo.medianFee
+    const targetFeeRate = Math.ceil(currentFeeInfo.medianFee)
 
     for (const tx of pendingTransactions) {
-      const shouldAccelerate = currentMedianFeeRate > tx.feeRate
+      // NEW CONDITION: Accelerate if transaction fee rate is below feeRange[1]
+      const shouldAccelerate = tx.feeRate < accelerationThreshold
 
       if (shouldAccelerate) {
+        // NEW TARGET: Accelerate to median fee rate (instead of using multiplier)
         const newFeeRate = Math.min(
-          Math.ceil(currentMedianFeeRate * this.config.accelerateFeeMultiplier),
-          tx.feeRate + this.config.maxFeeIncrease,
+          targetFeeRate,
           this.config.maxFeeRate
         )
 
@@ -413,6 +443,7 @@ class AutoClockInService {
           }
 
           this.log('info', `🚀 Accelerating transaction ${tx.txId} from ${tx.feeRate} to ${newFeeRate} sat/vB (attempt ${tx.accelerationAttempts + 1})`)
+          this.log('info', `   Reason: Transaction fee ${tx.feeRate} < threshold ${accelerationThreshold} (feeRange[1])`)
           
           try {
             const newTxId = await this.executeRBFTransaction(tx, newFeeRate)
@@ -439,7 +470,11 @@ class AutoClockInService {
             tx.accelerationAttempts++
             tx.lastAccelerationTime = Date.now()
           }
+        } else if (newFeeRate <= tx.feeRate) {
+          this.log('debug', `No acceleration needed for ${tx.txId} - already at or above target fee rate`)
         }
+      } else {
+        this.log('debug', `Transaction ${tx.txId} fee rate ${tx.feeRate} >= threshold ${accelerationThreshold} - no acceleration needed`)
       }
     }
   }

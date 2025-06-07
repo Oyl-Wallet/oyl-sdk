@@ -8,9 +8,8 @@ declare class AutoClockInService {
     private loadConfig;
     private initializeWallets;
     private calculateNextClockInHeight;
-    private isClockInBlock;
     private getCurrentBlockHeight;
-    private getMedianFeeRate;
+    private getFeeRateInfo;
     private checkWalletBalances;
     private executeClockIn;
     private sendClockInTransactions;
