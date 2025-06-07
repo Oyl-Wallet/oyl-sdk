@@ -24,7 +24,7 @@
       "@alkanes/*": ["alkanes/*"]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.wasm"],
+  "include": ["src/**/*.ts", "src/**/*.wasm", "scripts/**/*.ts"],
   "exclude": ["node_modules", "src/**/*.test.ts", "src/__fixtures__"],
   "ts-node": {
     "esm": true

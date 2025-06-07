@@ -86,10 +86,10 @@ export const mnemonicToAccount = ({
       addressOrder: opts?.spendStrategy?.addressOrder
         ? opts.spendStrategy.addressOrder
         : ([
+            'taproot',
             'nativeSegwit',
             'nestedSegwit',
             'legacy',
-            'taproot',
           ] as AddressKey[]),
       utxoSortGreatestToLeast:
         opts?.spendStrategy?.utxoSortGreatestToLeast !== undefined
@@ -97,7 +97,7 @@ export const mnemonicToAccount = ({
           : true,
       changeAddress: opts?.spendStrategy?.changeAddress
         ? opts?.spendStrategy?.changeAddress
-        : 'nativeSegwit',
+        : 'taproot',
     },
   }
 

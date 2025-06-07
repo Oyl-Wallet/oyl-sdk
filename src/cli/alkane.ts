@@ -18,7 +18,8 @@ import { ProtoruneRuneId } from 'alkanes/lib/protorune/protoruneruneid'
 import { u128 } from '@magiceden-oss/runestone-lib/dist/src/integer'
 import { createNewPool } from '../amm/factory'
 import { removeLiquidity, addLiquidity, swap } from '../amm/pool'
-import { packUTF8 } from '../shared/utils'
+import { packUTF8, inscriptionSats } from '../shared/utils'
+import { AccountUtxoPortfolio, FormattedUtxo } from '../utxo/types'
 /* @dev example call
   oyl alkane trace -params '{"txid":"e6561c7a8f80560c30a113c418bb56bde65694ac2b309a68549f35fdf2e785cb","vout":0}'
 
@@ -296,6 +297,14 @@ export const alkaneExecute = new AlkanesCommand('execute')
     'Network provider type (regtest, bitcoin)'
   )
   .option('-feeRate, --feeRate <feeRate>', 'fee rate')
+  .requiredOption(
+    '-alkaneReceiver, --alkane-receiver <alkaneReceiver>',
+    'Address to receive alkane assets (required)'
+  )
+  .option(
+    '--disable-change',
+    'Execute transaction without change output (absorbs remaining balance into fee)'
+  )
   .action(async (options) => {
     const wallet: Wallet = new Wallet(options)
 
@@ -327,6 +336,7 @@ export const alkaneExecute = new AlkanesCommand('execute')
       ],
     }).encodedRunestone
 
+    const noChange = options.disableChange || false
     console.log(
       await alkanes.execute({
         protostone,
@@ -335,6 +345,9 @@ export const alkaneExecute = new AlkanesCommand('execute')
         account: wallet.account,
         signer: wallet.signer,
         provider: wallet.provider,
+        alkaneReceiverAddress: options.alkaneReceiver,
+        enableRBF: false,
+        noChange: noChange,
       })
     )
   })
@@ -800,4 +813,312 @@ export const alkanePreviewRemoveLiquidity = new AlkanesCommand(
     } catch (error) {
       console.error('Error previewing liquidity removal:', error.message)
     }
+  })
+
+export const alkaneList = new AlkanesCommand('list')
+  .description('Lists all Alkanes assets owned by the account.')
+  .option(
+    '-p, --provider <provider>',
+    'Network provider type (regtest, bitcoin)',
+    'bitcoin',
+  )
+  .option(
+    '-d, --detailed',
+    'Show detailed UTXO breakdown instead of aggregated view'
+  )
+  .action(async (options) => {
+    const wallet: Wallet = new Wallet({ networkType: options.provider });
+    const accountPortfolio: AccountUtxoPortfolio = await utxo.accountUtxos({
+      account: wallet.account,
+      provider: wallet.provider,
+    });
+
+    console.log(`=== ALKANES BALANCE OVERVIEW ===`);
+    console.log(`Provider: ${options.provider}\n`);
+
+    // Aggregate alkanes by token ID
+    const alkaneBalances = new Map<string, {
+      name: string;
+      symbol: string;
+      totalValue: number;
+      utxoCount: number;
+      utxos: Array<{ txId: string; outputIndex: number; address: string; value: string }>;
+    }>();
+
+    let foundAlkanes = false;
+
+    if (accountPortfolio.accountUtxos && accountPortfolio.accountUtxos.length > 0) {
+      accountPortfolio.accountUtxos.forEach((utxoItem: FormattedUtxo) => {
+        if (utxoItem.alkanes && Object.keys(utxoItem.alkanes).length > 0) {
+          foundAlkanes = true;
+          for (const alkaneId in utxoItem.alkanes) {
+            if (Object.prototype.hasOwnProperty.call(utxoItem.alkanes, alkaneId)) {
+              const alkaneDetails = utxoItem.alkanes[alkaneId];
+              
+              if (!alkaneBalances.has(alkaneId)) {
+                alkaneBalances.set(alkaneId, {
+                  name: alkaneDetails.name,
+                  symbol: alkaneDetails.symbol,
+                  totalValue: 0,
+                  utxoCount: 0,
+                  utxos: []
+                });
+              }
+
+              const balance = alkaneBalances.get(alkaneId)!;
+              balance.totalValue += Number(alkaneDetails.value);
+              balance.utxoCount += 1;
+              balance.utxos.push({
+                txId: utxoItem.txId,
+                outputIndex: utxoItem.outputIndex,
+                address: utxoItem.address,
+                value: alkaneDetails.value
+              });
+            }
+          }
+        }
+      });
+    }
+
+    if (!foundAlkanes) {
+      console.log('  No Alkanes assets found for this account.');
+      return;
+    }
+
+    if (options.detailed) {
+      // Show detailed UTXO breakdown
+      console.log('📋 Detailed UTXO Breakdown:');
+      alkaneBalances.forEach((balance, alkaneId) => {
+        console.log(`\n🪙 ${alkaneId} (${balance.name} / ${balance.symbol})`);
+        console.log(`   Total Balance: ${balance.totalValue}`);
+        console.log(`   UTXOs: ${balance.utxoCount}`);
+        console.log('   ─────────────────────────────────────────');
+        balance.utxos.forEach((utxo) => {
+          console.log(`   📦 ${utxo.txId}:${utxo.outputIndex}`);
+          console.log(`      Address: ${utxo.address}`);
+          console.log(`      Amount: ${utxo.value}`);
+          console.log('');
+        });
+      });
+    } else {
+      // Show aggregated view (default)
+      console.log('💰 Aggregated Token Balances:');
+      console.log('');
+      alkaneBalances.forEach((balance, alkaneId) => {
+        console.log(`🪙 ${alkaneId}`);
+        console.log(`   Name: ${balance.name}`);
+        console.log(`   Symbol: ${balance.symbol}`);
+        console.log(`   Total Balance: ${balance.totalValue}`);
+        console.log(`   Held in ${balance.utxoCount} UTXO(s)`);
+        console.log('');
+      });
+
+      console.log('─────────────────────────────────────────');
+      console.log(`📊 Summary: ${alkaneBalances.size} unique alkane type(s) found`);
+      console.log(`💡 Use --detailed flag for UTXO breakdown`);
+    }
+  });
+
+/* @dev example call 
+  oyl alkane batch-execute -data 2,1,77 -n 100 -feeRate 10 -p regtest
+
+  Executes alkane operation with 100 child accounts (excluding main account)
+  All child accounts will execute the same calldata concurrently
+*/
+export const alkaneBatchExecute = new AlkanesCommand('batch-execute')
+  .requiredOption(
+    '-data, --calldata <calldata>',
+    'op code + params to be called on a contract',
+    (value, previous) => {
+      const items = value.split(',')
+      return previous ? previous.concat(items) : items
+    },
+    []
+  )
+  .requiredOption(
+    '-n, --accountCount <accountCount>',
+    'number of child accounts to execute with (excluding main account)'
+  )
+  .option(
+    '-e, --edicts <edicts>',
+    'edicts for protostone',
+    (value, previous) => {
+      const items = value.split(',')
+      return previous ? previous.concat(items) : items
+    },
+    []
+  )
+  .option(
+    '-m, --mnemonic <mnemonic>',
+    '(optional) Mnemonic used for signing transactions (default = TEST_WALLET)'
+  )
+  .option(
+    '-p, --provider <provider>',
+    'Network provider type (regtest, bitcoin)'
+  )
+  .option('-feeRate, --feeRate <feeRate>', 'fee rate')
+  .requiredOption(
+    '-alkaneReceiver, --alkane-receiver <alkaneReceiver>',
+    'Address to receive alkane assets (required)'
+  )
+  .action(async (options) => {
+    const wallet: Wallet = new Wallet(options)
+
+    const { accountUtxos } = await utxo.accountUtxos({
+      account: wallet.account,
+      provider: wallet.provider,
+    })
+    const calldata: bigint[] = options.calldata.map((item) => BigInt(item))
+
+    const edicts: ProtoruneEdict[] = options.edicts.map((item) => {
+      const [block, tx, amount, output] = item
+        .split(':')
+        .map((part) => part.trim())
+      return {
+        id: new ProtoruneRuneId(u128(block), u128(tx)),
+        amount: amount ? BigInt(amount) : undefined,
+        output: output ? Number(output) : undefined,
+      }
+    })
+    const protostone: Buffer = encodeRunestoneProtostone({
+      protostones: [
+        ProtoStone.message({
+          protocolTag: 1n,
+          edicts,
+          pointer: 0,
+          refundPointer: 0,
+          calldata: encipher(calldata),
+        }),
+      ],
+    }).encodedRunestone
+
+    console.log(
+      await alkanes.batchExecute({
+        protostone,
+        utxos: accountUtxos,
+        feeRate: wallet.feeRate,
+        account: wallet.account,
+        signer: wallet.signer,
+        provider: wallet.provider,
+        accountCount: parseInt(options.accountCount),
+        mnemonic: wallet.mnemonic,
+        alkaneReceiverAddress: options.alkaneReceiver,
+      })
+    )
+  })
+
+/* @dev example call 
+  oyl alkane estimate-fee -data 2,1,77 -feeRate 10 -inputCount 1
+
+  Estimates the exact fee needed for an alkane transaction without change output
+*/
+export const alkaneEstimateFee = new AlkanesCommand('estimate-fee')
+  .requiredOption(
+    '-data, --calldata <calldata>',
+    'op code + params to be called on a contract',
+    (value, previous) => {
+      const items = value.split(',')
+      return previous ? previous.concat(items) : items
+    },
+    []
+  )
+  .option(
+    '-e, --edicts <edicts>',
+    'edicts for protostone',
+    (value, previous) => {
+      const items = value.split(',')
+      return previous ? previous.concat(items) : items
+    },
+    []
+  )
+  .option(
+    '-p, --provider <provider>',
+    'Network provider type (regtest, bitcoin)'
+  )
+  .requiredOption('-feeRate, --feeRate <feeRate>', 'fee rate in sat/vB')
+  .option(
+    '-inputCount, --input-count <inputCount>',
+    'number of inputs to estimate for (defaults to 1)',
+    '1'
+  )
+  .option(
+    '-frontendFee, --frontend-fee <frontendFee>',
+    'frontend fee in satoshis'
+  )
+  .option(
+    '-feeAddress, --fee-address <feeAddress>',
+    'address to receive frontend fee'
+  )
+  .option(
+    '-alkaneReceiver, --alkane-receiver <alkaneReceiver>',
+    'Address to receive alkane assets (defaults to wallet address)'
+  )
+  .option(
+    '--disable-change',
+    'Calculate fee for transaction without change output (absorbs remaining balance into fee)'
+  )
+  .action(async (options) => {
+    const wallet: Wallet = new Wallet(options)
+
+    // Get real UTXOs from the account
+    const { accountUtxos } = await utxo.accountUtxos({
+      account: wallet.account,
+      provider: wallet.provider,
+    })
+
+    const calldata: bigint[] = options.calldata.map((item) => BigInt(item))
+
+    const edicts: ProtoruneEdict[] = options.edicts.map((item) => {
+      const [block, tx, amount, output] = item
+        .split(':')
+        .map((part) => part.trim())
+      return {
+        id: new ProtoruneRuneId(u128(block), u128(tx)),
+        amount: amount ? BigInt(amount) : undefined,
+        output: output ? Number(output) : undefined,
+      }
+    })
+
+    const protostone: Buffer = encodeRunestoneProtostone({
+      protostones: [
+        ProtoStone.message({
+          protocolTag: 1n,
+          edicts,
+          pointer: 0,
+          refundPointer: 0,
+          calldata: encipher(calldata),
+        }),
+      ],
+    }).encodedRunestone
+
+    // Use actualExecuteFee for precise calculation with real UTXOs
+    const noChange = options.disableChange || false
+    const result = await alkanes.actualExecuteFee({
+      utxos: accountUtxos,
+      account: wallet.account,
+      protostone,
+      provider: wallet.provider,
+      feeRate: parseInt(options.feeRate),
+      frontendFee: options.frontendFee ? BigInt(options.frontendFee) : undefined,
+      feeAddress: options.feeAddress,
+      alkaneReceiverAddress: options.alkaneReceiver,
+      noChange: noChange,
+    })
+
+    const totalRequired = inscriptionSats + Number(options.frontendFee || 0) + result.fee
+
+    console.log(JSON.stringify({
+      estimatedFee: result.fee,
+      totalRequired: totalRequired,
+      breakdown: {
+        alkaneOutput: inscriptionSats,
+        frontendFee: Number(options.frontendFee || 0),
+        transactionFee: result.fee,
+        vsize: result.vsize,
+      },
+      recommendation: {
+        message: "Use this totalRequired amount for UTXO splitting to ensure exact balance for alkane execution without change",
+        splitAmount: totalRequired
+      }
+    }, null, 2))
   })

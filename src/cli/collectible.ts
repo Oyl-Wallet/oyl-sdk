@@ -51,3 +51,113 @@ export const collectibleSend = new Command('send')
       })
     )
   })
+
+export const collectibleBalance = new Command('balance')
+  .description('Returns collectibles/inscriptions for account addresses')
+  .requiredOption(
+    '-p, --provider <provider>',
+    'Network provider type (regtest, bitcoin)'
+  )
+  .option(
+    '-a, --address <address>',
+    'specific address to check (optional, defaults to all account addresses)'
+  )
+
+  /* @dev example call 
+  oyl collectible balance -p regtest
+  oyl collectible balance -p bitcoin -a bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqvg32hk
+*/
+
+  .action(async (options) => {
+    const wallet: Wallet = new Wallet({ networkType: options.provider })
+    const account = wallet.account
+    const provider = wallet.provider
+
+    if (options.address) {
+      try {
+        const addressOutpoints = await provider.ord.getOrdData(options.address)
+        const inscriptions = []
+
+        for (const output of addressOutpoints.outputs) {
+          try {
+            const ordOutput = await provider.ord.getTxOutput(output)
+            if (ordOutput.inscriptions && ordOutput.inscriptions.length > 0) {
+              for (const inscriptionId of ordOutput.inscriptions) {
+                inscriptions.push({
+                  id: inscriptionId,
+                  output: output
+                })
+              }
+            }
+          } catch (error) {
+            continue
+          }
+        }
+
+        console.log(`Collectibles for address ${options.address}:`)
+        if (inscriptions.length === 0) {
+          console.log('  No collectibles/inscriptions found')
+        } else {
+          inscriptions.forEach((inscription) => {
+            console.log(`  ID: ${inscription.id}`)
+            console.log(`    Output: ${inscription.output}`)
+            console.log('')
+          })
+          console.log(`  Total: ${inscriptions.length} collectible(s)`)
+        }
+      } catch (error) {
+        console.error(`Error fetching collectibles: ${error.message}`)
+      }
+    } else {
+      const addresses = [
+        { type: 'Native SegWit', address: account.nativeSegwit.address },
+        { type: 'Nested SegWit', address: account.nestedSegwit.address },
+        { type: 'Taproot', address: account.taproot.address },
+        { type: 'Legacy', address: account.legacy.address },
+      ]
+
+      console.log('Collectibles for all account addresses:')
+      let totalFound = 0
+
+      for (const { type, address } of addresses) {
+        try {
+          const addressOutpoints = await provider.ord.getOrdData(address)
+          const inscriptions = []
+
+          for (const output of addressOutpoints.outputs) {
+            try {
+              const ordOutput = await provider.ord.getTxOutput(output)
+              if (ordOutput.inscriptions && ordOutput.inscriptions.length > 0) {
+                for (const inscriptionId of ordOutput.inscriptions) {
+                  inscriptions.push({
+                    id: inscriptionId,
+                    output: output
+                  })
+                }
+              }
+            } catch (error) {
+              continue
+            }
+          }
+
+          if (inscriptions.length > 0) {
+            totalFound += inscriptions.length
+            console.log(`\n  ${type} (${address}):`)
+            inscriptions.forEach((inscription) => {
+              console.log(`    ID: ${inscription.id}`)
+              console.log(`      Output: ${inscription.output}`)
+            })
+            console.log(`    Subtotal: ${inscriptions.length} collectible(s)`)
+          }
+        } catch (error) {
+          continue
+        }
+      }
+
+      if (totalFound === 0) {
+        console.log('  No collectibles/inscriptions found across all addresses')
+      } else {
+        console.log(`\n  Total across all addresses: ${totalFound} collectible(s)`)
+      }
+    }
+  })

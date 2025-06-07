@@ -175,3 +175,106 @@ oyl rune etchReveal -p regtest -feeRate 2 -divisibility 3 -cap 100000 -pre 1000 
       })
     )
   })
+
+export const runeBalance = new Command('balance')
+  .description('Returns rune balances for account addresses')
+  .requiredOption(
+    '-p, --provider <provider>',
+    'Network provider type (regtest, bitcoin)'
+  )
+  .option(
+    '-a, --address <address>',
+    'specific address to check (optional, defaults to all account addresses)'
+  )
+
+  /* @dev example call 
+  oyl rune balance -p regtest
+  oyl rune balance -p bitcoin -a bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqvg32hk
+*/
+
+  .action(async (options) => {
+    const wallet: Wallet = new Wallet({ networkType: options.provider })
+    const account = wallet.account
+    const provider = wallet.provider
+
+    if (options.address) {
+      try {
+        const addressOutpoints = await provider.ord.getOrdData(options.address)
+        const runeBalances = new Map()
+
+        for (const output of addressOutpoints.outputs) {
+          try {
+            const ordOutput = await provider.ord.getTxOutput(output)
+            if (ordOutput.runes && Object.keys(ordOutput.runes).length > 0) {
+              for (const [runeName, runeData] of Object.entries(ordOutput.runes)) {
+                const existing = runeBalances.get(runeName) || { amount: 0, divisibility: runeData.divisibility }
+                existing.amount += runeData.amount
+                runeBalances.set(runeName, existing)
+              }
+            }
+          } catch (error) {
+            continue
+          }
+        }
+
+        console.log(`Rune balances for address ${options.address}:`)
+        if (runeBalances.size === 0) {
+          console.log('  No runes found')
+        } else {
+          runeBalances.forEach((balance, runeName) => {
+            const adjustedAmount = balance.amount / Math.pow(10, balance.divisibility)
+            console.log(`  ${runeName}: ${adjustedAmount}`)
+          })
+        }
+      } catch (error) {
+        console.error(`Error fetching rune balance: ${error.message}`)
+      }
+    } else {
+      const addresses = [
+        { type: 'Native SegWit', address: account.nativeSegwit.address },
+        { type: 'Nested SegWit', address: account.nestedSegwit.address },
+        { type: 'Taproot', address: account.taproot.address },
+        { type: 'Legacy', address: account.legacy.address },
+      ]
+
+      console.log('Rune balances for all account addresses:')
+      let totalFound = false
+
+      for (const { type, address } of addresses) {
+        try {
+          const addressOutpoints = await provider.ord.getOrdData(address)
+          const runeBalances = new Map()
+
+          for (const output of addressOutpoints.outputs) {
+            try {
+              const ordOutput = await provider.ord.getTxOutput(output)
+              if (ordOutput.runes && Object.keys(ordOutput.runes).length > 0) {
+                for (const [runeName, runeData] of Object.entries(ordOutput.runes)) {
+                  const existing = runeBalances.get(runeName) || { amount: 0, divisibility: runeData.divisibility }
+                  existing.amount += runeData.amount
+                  runeBalances.set(runeName, existing)
+                }
+              }
+            } catch (error) {
+              continue
+            }
+          }
+
+          if (runeBalances.size > 0) {
+            totalFound = true
+            console.log(`\n  ${type} (${address}):`)
+            runeBalances.forEach((balance, runeName) => {
+              const adjustedAmount = balance.amount / Math.pow(10, balance.divisibility)
+              console.log(`    ${runeName}: ${adjustedAmount}`)
+            })
+          }
+        } catch (error) {
+          continue
+        }
+      }
+
+      if (!totalFound) {
+        console.log('  No runes found across all addresses')
+      }
+    }
+  })

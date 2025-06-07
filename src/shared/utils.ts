@@ -60,7 +60,7 @@ export interface IBISWalletIx {
 }
 
 export const addressTypeMap = { 0: 'p2pkh', 1: 'p2tr', 2: 'p2sh', 3: 'p2wpkh' }
-export const inscriptionSats = 546
+export const inscriptionSats = 330
 
 export const ECPair = ECPairFactory(ecc)
 
@@ -655,7 +655,7 @@ export const filterTaprootUtxos = async ({
   }
   const { nonMetaUtxos } = taprootUtxos.reduce(
     (acc, utxo) => {
-      utxo.inscriptions.length > 0 || utxo.satoshis === 546
+      utxo.inscriptions.length > 0 || utxo.satoshis === inscriptionSats
         ? acc.metaUtxos.push(utxo)
         : acc.nonMetaUtxos.push(utxo)
       return acc
@@ -672,7 +672,7 @@ export const filterTaprootUtxos = async ({
 export const filterUtxos = async ({ utxos }: { utxos: any[] }) => {
   const { nonMetaUtxos } = utxos.reduce(
     (acc, utxo) => {
-      utxo.value === 546 && utxo.vout === 0
+      utxo.value === inscriptionSats && utxo.vout === 0
         ? acc.metaUtxos.push(utxo)
         : acc.nonMetaUtxos.push(utxo)
       return acc

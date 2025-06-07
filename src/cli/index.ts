@@ -1,5 +1,5 @@
 import { Command } from 'commander'
-import { collectibleSend } from './collectible'
+import { collectibleSend, collectibleBalance } from './collectible'
 
 import {
   alkaneExecute,
@@ -14,16 +14,21 @@ import {
   alkaneSimulate,
   alkaneGetAllPoolsDetails,
   alkanePreviewRemoveLiquidity,
+  alkaneList,
+  alkaneBatchExecute,
+  alkaneEstimateFee,
 } from './alkane'
 import { init, genBlocks, sendFromFaucet } from './regtest'
-import { runeSend, runeMint, runeEtchCommit, runeEtchReveal } from './rune'
+import { runeSend, runeMint, runeEtchCommit, runeEtchReveal, runeBalance } from './rune'
 import { brc20Send } from './brc20'
-import { btcSend } from './btc'
+import { btcSend, btcSplit } from './btc'
 import {
   accountAvailableBalance,
   accountUtxosToSpend,
   addressBRC20Balance,
   addressUtxosToSpend,
+  accountBRC20Balance,
+  allAssetsBalance,
 } from './utxo'
 import {
   mnemonicToAccountCommand,
@@ -43,7 +48,7 @@ const program = new Command()
 program
   .name('default')
   .description('All functionality for oyl-sdk in a cli-wrapper')
-  .version(require('../../package.json').version)
+  .version(require('../../../package.json').version)
 
 const regtestCommand = new Command('regtest')
   .description('Regtest commands')
@@ -64,9 +69,12 @@ const utxosCommand = new Command('utxo')
   .addCommand(accountUtxosToSpend)
   .addCommand(addressUtxosToSpend)
   .addCommand(accountAvailableBalance)
+  .addCommand(accountBRC20Balance)
+  .addCommand(allAssetsBalance)
 const btcCommand = new Command('btc')
   .description('Functions for sending bitcoin')
   .addCommand(btcSend)
+  .addCommand(btcSplit)
 
 const brc20Command = new Command('brc20')
   .description('Functions for brc20')
@@ -76,6 +84,7 @@ const brc20Command = new Command('brc20')
 const collectibleCommand = new Command('collectible')
   .description('Functions for collectibles')
   .addCommand(collectibleSend)
+  .addCommand(collectibleBalance)
 
 const runeCommand = new Command('rune')
   .description('Functions for runes')
@@ -83,10 +92,12 @@ const runeCommand = new Command('rune')
   .addCommand(runeMint)
   .addCommand(runeEtchCommit)
   .addCommand(runeEtchReveal)
+  .addCommand(runeBalance)
 const alkaneCommand = new Command('alkane')
   .description('Functions for alkanes')
   .addCommand(alkaneContractDeploy)
   .addCommand(alkaneExecute)
+  .addCommand(alkaneBatchExecute)
   .addCommand(alkaneTokenDeploy)
   .addCommand(alkanesTrace)
   .addCommand(alkaneSend)
@@ -97,6 +108,8 @@ const alkaneCommand = new Command('alkane')
   .addCommand(alkaneSimulate)
   .addCommand(alkaneGetAllPoolsDetails)
   .addCommand(alkanePreviewRemoveLiquidity)
+  .addCommand(alkaneList)
+  .addCommand(alkaneEstimateFee)
   
   
 const providerCommand = new Command('provider')
