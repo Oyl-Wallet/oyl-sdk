@@ -362,16 +362,8 @@ class AutoClockInService {
     this.log('info', `Monitoring transactions for target height ${targetHeight}`)
 
     const checkInterval = 30000 // Check every 30 seconds
-    const maxWaitTime = 600000 // Maximum 10 minutes
-
-    const startTime = Date.now()
 
     const monitorLoop = async (): Promise<void> => {
-      if (Date.now() - startTime > maxWaitTime) {
-        this.log('warn', 'Maximum wait time exceeded, stopping transaction monitoring')
-        return
-      }
-
       try {
         // Check current block height
         const currentHeight = await this.getCurrentBlockHeight()
@@ -432,15 +424,7 @@ class AutoClockInService {
           this.config.maxFeeRate
         )
 
-        if (newFeeRate > tx.feeRate && tx.accelerationAttempts < 3) {
-          // Prevent too frequent acceleration attempts
-          const timeSinceLastAcceleration = tx.lastAccelerationTime ? 
-            Date.now() - tx.lastAccelerationTime : Number.MAX_SAFE_INTEGER
-          
-          if (timeSinceLastAcceleration < 300000) { // 5 minutes
-            this.log('debug', `Skipping acceleration for ${tx.txId} - too recent`)
-            continue
-          }
+        if (newFeeRate > tx.feeRate) {
 
           this.log('info', `🚀 Accelerating transaction ${tx.txId} from ${tx.feeRate} to ${newFeeRate} sat/vB (attempt ${tx.accelerationAttempts + 1})`)
           this.log('info', `   Reason: Transaction fee ${tx.feeRate} < threshold ${accelerationThreshold} (feeRange[1])`)
@@ -462,12 +446,10 @@ class AutoClockInService {
               this.log('info', `✅ Successfully accelerated transaction ${tx.txId} -> ${newTxId}`)
             } else {
               this.log('warn', `❌ Failed to accelerate transaction ${tx.txId}`)
-              tx.accelerationAttempts++
               tx.lastAccelerationTime = Date.now()
             }
           } catch (error) {
             this.log('error', `❌ Error accelerating transaction ${tx.txId}: ${error.message}`)
-            tx.accelerationAttempts++
             tx.lastAccelerationTime = Date.now()
           }
         } else if (newFeeRate <= tx.feeRate) {
