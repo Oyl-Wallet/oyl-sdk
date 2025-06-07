@@ -352,9 +352,9 @@ export const splitUtxos = async ({
         throw new Error('Account count must be at least 1')
       }
 
-      // Generate n-1 child wallets (account at index 0 is the main one)
+      // Generate n child wallets (excluding main wallet at index 0)
       const childAccounts: Account[] = []
-      for (let i = 1; i < accountCount; i++) {
+      for (let i = 1; i <= accountCount; i++) {
         const childAccount = mnemonicToAccount({
           mnemonic,
           opts: {
@@ -366,14 +366,11 @@ export const splitUtxos = async ({
         childAccounts.push(childAccount)
       }
 
-      // Add main account (index 0) and child accounts
-      outputs = [
-        { address: account.taproot.address, amount },
-        ...childAccounts.map(childAccount => ({
-          address: childAccount.taproot.address,
-          amount,
-        })),
-      ]
+      // Only add child accounts (excluding main account at index 0)
+      outputs = childAccounts.map(childAccount => ({
+        address: childAccount.taproot.address,
+        amount,
+      }))
     } else {
       throw new Error('Invalid split mode')
     }

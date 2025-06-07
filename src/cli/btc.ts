@@ -53,10 +53,10 @@ export const btcSplit = new Command('split')
   
   // For auto_generate mode  
   .option('-amt, --amount <amount>', 'amount per address in sats')
-  .option('-n, --accountCount <accountCount>', 'number of accounts to split to', '2')
+  .option('-n, --accountCount <accountCount>', 'number of child accounts to split to (excluding main wallet)', '2')
 
   /* @dev example calls 
-  // Auto generate mode:
+  // Auto generate mode (splits to 3 child wallets, excluding main wallet):
   oyl btc split -p regtest -amt 100000 -n 3 -feeRate 10
   
   // Amounts and addresses mode:

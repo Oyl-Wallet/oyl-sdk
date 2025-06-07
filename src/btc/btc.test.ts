@@ -164,7 +164,7 @@ describe('splitUtxos', () => {
     })
 
     expect(result.txId).toBe('mock_tx_id')
-    expect(result.outputs).toHaveLength(3) // Main account + 2 child accounts
+    expect(result.outputs).toHaveLength(3) // 3 child accounts (excluding main account)
     expect(result.outputs[0].amount).toBe(100000)
     expect(result.outputs[1].amount).toBe(100000)
     expect(result.outputs[2].amount).toBe(100000)

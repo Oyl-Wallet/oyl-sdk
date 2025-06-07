@@ -975,12 +975,10 @@ export const batchExecute = async ({
       throw new Error('Account count must be at least 1')
     }
 
-    // Generate child accounts and their corresponding signers
-    const accountsWithSigners: Array<{ account: Account; signer: Signer }> = [
-      { account, signer }
-    ]
+    // Generate child accounts and their corresponding signers (excluding main account)
+    const accountsWithSigners: Array<{ account: Account; signer: Signer }> = []
     
-    for (let i = 1; i < accountCount; i++) {
+    for (let i = 1; i <= accountCount; i++) {
       const childAccount = mnemonicToAccount({
         mnemonic,
         opts: {
@@ -1032,7 +1030,7 @@ export const batchExecute = async ({
         })
         return {
           account: {
-            index,
+            index: index + 1, // Child account index starts from 1
             address: acc.taproot.address,
           },
           success: true,
@@ -1041,7 +1039,7 @@ export const batchExecute = async ({
       } catch (error) {
         return {
           account: {
-            index,
+            index: index + 1, // Child account index starts from 1
             address: acc.taproot.address,
           },
           success: false,
@@ -1058,7 +1056,7 @@ export const batchExecute = async ({
       } else {
         return {
           account: {
-            index,
+            index: index + 1, // Child account index starts from 1
             address: accountsWithSigners[index].account.taproot.address,
           },
           success: false,

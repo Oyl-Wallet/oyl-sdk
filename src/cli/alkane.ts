@@ -922,8 +922,8 @@ export const alkaneList = new AlkanesCommand('list')
 /* @dev example call 
   oyl alkane batch-execute -data 2,1,77 -n 100 -feeRate 10 -p regtest
 
-  Executes alkane operation with 100 accounts (main account + 99 child accounts)
-  All accounts will execute the same calldata concurrently
+  Executes alkane operation with 100 child accounts (excluding main account)
+  All child accounts will execute the same calldata concurrently
 */
 export const alkaneBatchExecute = new AlkanesCommand('batch-execute')
   .requiredOption(
@@ -937,7 +937,7 @@ export const alkaneBatchExecute = new AlkanesCommand('batch-execute')
   )
   .requiredOption(
     '-n, --accountCount <accountCount>',
-    'number of accounts to execute with (includes main account)'
+    'number of child accounts to execute with (excluding main account)'
   )
   .option(
     '-e, --edicts <edicts>',

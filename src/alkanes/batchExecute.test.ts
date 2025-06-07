@@ -187,8 +187,8 @@ describe('batchExecute', () => {
     const addresses = result.summary.success.map(s => s.address)
     expect(new Set(addresses).size).toBe(3) // All unique addresses
     
-    // Verify account indices
-    expect(result.summary.success.map(s => s.accountIndex)).toEqual([0, 1, 2])
+    // Verify account indices (child accounts only, starting from index 1)
+    expect(result.summary.success.map(s => s.accountIndex)).toEqual([1, 2, 3])
   })
 
   it('should handle account with alkanes UTXOs', async () => {
@@ -287,7 +287,7 @@ describe('batchExecute', () => {
     expect(result.failedExecutions).toBe(1)
     expect(result.summary.success).toHaveLength(2)
     expect(result.summary.failed).toHaveLength(1)
-    expect(result.summary.failed[0].accountIndex).toBe(1)
+    expect(result.summary.failed[0].accountIndex).toBe(2)
     expect(result.summary.failed[0].error).toContain('Transaction failed')
   })
 
@@ -317,7 +317,7 @@ describe('batchExecute', () => {
     })).rejects.toThrow('Account count must be at least 1')
   })
 
-  it('should execute with single account (main account only)', async () => {
+  it('should execute with single account (child account only)', async () => {
     const testProtostone = encodeRunestoneProtostone({
       protostones: [
         ProtoStone.message({
@@ -346,8 +346,9 @@ describe('batchExecute', () => {
     expect(result.successfulExecutions).toBe(1)
     expect(result.failedExecutions).toBe(0)
     expect(result.summary.success).toHaveLength(1)
-    expect(result.summary.success[0].accountIndex).toBe(0)
-    expect(result.summary.success[0].address).toBe(account.taproot.address)
+    expect(result.summary.success[0].accountIndex).toBe(1)
+    // The first child account will have a different address than the main account
+    expect(result.summary.success[0].address).not.toBe(account.taproot.address)
   })
 
   it('should handle frontend fee and fee address', async () => {
@@ -458,9 +459,27 @@ describe('batchExecute', () => {
     const taprootKeys = signersUsed.map(signer => signer.taprootKeyPair.publicKey.toString('hex'))
     expect(new Set(taprootKeys).size).toBe(3) // All unique public keys
     
-    // Verify the first signer matches the main account
+    // Verify the first signer matches the child account at index 1 (not main account)
+    const childSigner = new Signer(account.network, {
+      taprootPrivateKey: getWalletPrivateKeys({
+        mnemonic,
+        opts: { network: account.network, index: 1 }
+      }).taproot.privateKey,
+      segwitPrivateKey: getWalletPrivateKeys({
+        mnemonic,
+        opts: { network: account.network, index: 1 }
+      }).nativeSegwit.privateKey,
+      nestedSegwitPrivateKey: getWalletPrivateKeys({
+        mnemonic,
+        opts: { network: account.network, index: 1 }
+      }).nestedSegwit.privateKey,
+      legacyPrivateKey: getWalletPrivateKeys({
+        mnemonic,
+        opts: { network: account.network, index: 1 }
+      }).legacy.privateKey,
+    })
     expect(signersUsed[0].taprootKeyPair.publicKey.toString('hex'))
-      .toBe(mainSigner.taprootKeyPair.publicKey.toString('hex'))
+      .toBe(childSigner.taprootKeyPair.publicKey.toString('hex'))
     
     // Verify accounts were created correctly
     expect(result.totalAccounts).toBe(3)
