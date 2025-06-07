@@ -301,6 +301,10 @@ export const alkaneExecute = new AlkanesCommand('execute')
     '-alkaneReceiver, --alkane-receiver <alkaneReceiver>',
     'Address to receive alkane assets (required)'
   )
+  .option(
+    '--disable-change',
+    'Execute transaction without change output (absorbs remaining balance into fee)'
+  )
   .action(async (options) => {
     const wallet: Wallet = new Wallet(options)
 
@@ -332,6 +336,7 @@ export const alkaneExecute = new AlkanesCommand('execute')
       ],
     }).encodedRunestone
 
+    const noChange = options.disableChange || false
     console.log(
       await alkanes.execute({
         protostone,
@@ -342,6 +347,7 @@ export const alkaneExecute = new AlkanesCommand('execute')
         provider: wallet.provider,
         alkaneReceiverAddress: options.alkaneReceiver,
         enableRBF: false,
+        noChange: noChange,
       })
     )
   })
@@ -1047,6 +1053,10 @@ export const alkaneEstimateFee = new AlkanesCommand('estimate-fee')
     '-alkaneReceiver, --alkane-receiver <alkaneReceiver>',
     'Address to receive alkane assets (defaults to wallet address)'
   )
+  .option(
+    '--disable-change',
+    'Calculate fee for transaction without change output (absorbs remaining balance into fee)'
+  )
   .action(async (options) => {
     const wallet: Wallet = new Wallet(options)
 
@@ -1082,6 +1092,7 @@ export const alkaneEstimateFee = new AlkanesCommand('estimate-fee')
     }).encodedRunestone
 
     // Use actualExecuteFee for precise calculation with real UTXOs
+    const noChange = options.disableChange || false
     const result = await alkanes.actualExecuteFee({
       utxos: accountUtxos,
       account: wallet.account,
@@ -1091,6 +1102,7 @@ export const alkaneEstimateFee = new AlkanesCommand('estimate-fee')
       frontendFee: options.frontendFee ? BigInt(options.frontendFee) : undefined,
       feeAddress: options.feeAddress,
       alkaneReceiverAddress: options.alkaneReceiver,
+      noChange: noChange,
     })
 
     const totalRequired = inscriptionSats + Number(options.frontendFee || 0) + result.fee

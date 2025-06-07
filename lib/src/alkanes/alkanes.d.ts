@@ -13,7 +13,7 @@ export interface ProtostoneMessage {
     calldata: bigint[];
 }
 export declare const encodeProtostone: ({ protocolTag, edicts, pointer, refundPointer, calldata, }: ProtostoneMessage) => Buffer;
-export declare const createExecutePsbt: ({ alkanesUtxos, frontendFee, feeAddress, utxos, account, protostone, provider, feeRate, fee, alkaneReceiverAddress, enableRBF, }: {
+export declare const createExecutePsbt: ({ alkanesUtxos, frontendFee, feeAddress, utxos, account, protostone, provider, feeRate, fee, alkaneReceiverAddress, enableRBF, noChange, }: {
     alkanesUtxos?: FormattedUtxo[];
     frontendFee?: bigint;
     feeAddress?: string;
@@ -25,6 +25,7 @@ export declare const createExecutePsbt: ({ alkanesUtxos, frontendFee, feeAddress
     fee?: number;
     alkaneReceiverAddress?: string;
     enableRBF?: boolean;
+    noChange?: boolean;
 }) => Promise<{
     psbt: string;
     psbtHex: string;
@@ -98,7 +99,7 @@ export declare const actualTransactRevealFee: ({ protostone, tweakedPublicKey, c
     fee: number;
     vsize: number;
 }>;
-export declare const actualExecuteFee: ({ alkanesUtxos, utxos, account, protostone, provider, feeRate, frontendFee, feeAddress, alkaneReceiverAddress, }: {
+export declare const actualExecuteFee: ({ alkanesUtxos, utxos, account, protostone, provider, feeRate, frontendFee, feeAddress, alkaneReceiverAddress, noChange, }: {
     alkanesUtxos?: FormattedUtxo[];
     utxos: FormattedUtxo[];
     account: Account;
@@ -108,6 +109,7 @@ export declare const actualExecuteFee: ({ alkanesUtxos, utxos, account, protosto
     frontendFee?: bigint;
     feeAddress?: string;
     alkaneReceiverAddress?: string;
+    noChange?: boolean;
 }) => Promise<{
     fee: number;
     vsize: number;
@@ -126,7 +128,7 @@ export declare const executePsbt: ({ alkanesUtxos, utxos, account, protostone, p
     psbt: string;
     fee: number;
 }>;
-export declare const execute: ({ alkanesUtxos, utxos, account, protostone, provider, feeRate, signer, frontendFee, feeAddress, alkaneReceiverAddress, enableRBF, }: {
+export declare const execute: ({ alkanesUtxos, utxos, account, protostone, provider, feeRate, signer, frontendFee, feeAddress, alkaneReceiverAddress, enableRBF, noChange, }: {
     alkanesUtxos?: FormattedUtxo[];
     utxos: FormattedUtxo[];
     account: Account;
@@ -138,6 +140,7 @@ export declare const execute: ({ alkanesUtxos, utxos, account, protostone, provi
     feeAddress?: string;
     alkaneReceiverAddress?: string;
     enableRBF?: boolean;
+    noChange?: boolean;
 }) => Promise<{
     txId: string;
     rawTx: string;

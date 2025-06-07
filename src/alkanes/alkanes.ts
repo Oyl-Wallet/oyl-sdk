@@ -66,6 +66,7 @@ export const createExecutePsbt = async ({
   fee = 0,
   alkaneReceiverAddress,
   enableRBF = false,
+  noChange = false,
 }: {
   alkanesUtxos?: FormattedUtxo[]
   frontendFee?: bigint
@@ -78,6 +79,7 @@ export const createExecutePsbt = async ({
   fee?: number
   alkaneReceiverAddress?: string
   enableRBF?: boolean
+  noChange?: boolean
 }) => {
   try {
     const SAT_PER_VBYTE = feeRate ?? 1
@@ -93,7 +95,7 @@ export const createExecutePsbt = async ({
     const spendTargets = inscriptionSats + Number(feeSatEffective)
 
     const minTxSize = minimumFee({
-      taprootInputCount: 2,
+      taprootInputCount: 1,
       nonTaprootInputCount: 0,
       outputCount: 2 + (feeSatEffective > 0n ? 1 : 0),
     })
@@ -152,10 +154,10 @@ export const createExecutePsbt = async ({
     const inputsTotal = gatheredUtxos.totalAmount + (totalAlkanesAmount ?? 0)
     const outputsTotal = psbt.txOutputs.reduce((sum, o) => sum + o.value, 0)
 
-    let change = inputsTotal - outputsTotal - minerFee
+    let change = inputsTotal - outputsTotal - minerFee + 14
     if (change < 0) throw new OylTransactionError(Error('Insufficient balance'))
 
-    if (change >= Number(MIN_RELAY)) {
+    if (noChange !== true && change >= Number(MIN_RELAY)) {
       psbt.addOutput({
         address: account[account.spendStrategy.changeAddress].address,
         value: change,
@@ -668,6 +670,7 @@ export const actualExecuteFee = async ({
   frontendFee,
   feeAddress,
   alkaneReceiverAddress,
+  noChange = false,
 }: {
   alkanesUtxos?: FormattedUtxo[]
   utxos: FormattedUtxo[]
@@ -678,6 +681,7 @@ export const actualExecuteFee = async ({
   frontendFee?: bigint
   feeAddress?: string
   alkaneReceiverAddress?: string
+  noChange?: boolean
 }) => {
   const { psbt } = await createExecutePsbt({
     alkanesUtxos,
@@ -690,6 +694,7 @@ export const actualExecuteFee = async ({
     feeRate,
     alkaneReceiverAddress,
     enableRBF: false,
+    noChange,
   })
 
   const { fee: estimatedFee } = await getEstimatedFee({
@@ -710,6 +715,7 @@ export const actualExecuteFee = async ({
     fee: estimatedFee,
     alkaneReceiverAddress,
     enableRBF: false,
+    noChange,
   })
 
   const { fee: finalFee, vsize } = await getEstimatedFee({
@@ -783,6 +789,7 @@ export const execute = async ({
   feeAddress,
   alkaneReceiverAddress,
   enableRBF = false,
+  noChange = false,
 }: {
   alkanesUtxos?: FormattedUtxo[]
   utxos: FormattedUtxo[]
@@ -795,6 +802,7 @@ export const execute = async ({
   feeAddress?: string
   alkaneReceiverAddress?: string
   enableRBF?: boolean
+  noChange?: boolean
 }) => {
   const { fee } = await actualExecuteFee({
     alkanesUtxos,
@@ -806,6 +814,7 @@ export const execute = async ({
     provider,
     feeRate,
     alkaneReceiverAddress,
+    noChange,
   })
 
   const { psbt: finalPsbt } = await createExecutePsbt({
@@ -820,6 +829,7 @@ export const execute = async ({
     fee,
     alkaneReceiverAddress,
     enableRBF,
+    noChange,
   })
 
   const { signedPsbt } = await signer.signAllInputs({
