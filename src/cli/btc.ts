@@ -106,7 +106,7 @@ export const btcSplit = new Command('split')
     console.log(
       await btc.splitUtxos({
         utxos: accountSpendableTotalUtxos,
-        feeRate: parseInt(options.feeRate),
+        feeRate: parseFloat(options.feeRate),
         account,
         provider,
         signer,
