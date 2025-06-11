@@ -18,3 +18,5 @@ export declare const alkanePreviewRemoveLiquidity: AlkanesCommand;
 export declare const alkaneList: AlkanesCommand;
 export declare const alkaneBatchExecute: AlkanesCommand;
 export declare const alkaneEstimateFee: AlkanesCommand;
+export declare const alkaneChainMint: AlkanesCommand;
+export declare const alkaneVerifyChain: AlkanesCommand;

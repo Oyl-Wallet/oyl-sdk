@@ -20,6 +20,20 @@ import { createNewPool } from '../amm/factory'
 import { removeLiquidity, addLiquidity, swap } from '../amm/pool'
 import { packUTF8, inscriptionSats } from '../shared/utils'
 import { AccountUtxoPortfolio, FormattedUtxo } from '../utxo/types'
+import { 
+  generateChainMintingWalletsFromEnv,
+  performDryRunFeeCalculation,
+  AlkaneContractId,
+  ChainMintingError,
+  HARDCODED_TRANSACTION_SIZES
+} from '../alkanes/chainMinting'
+import { 
+  buildSignAndBroadcastParentTransaction, 
+  buildAndBroadcastChildTransactionChain,
+  executeCompleteChainMinting,
+  verifyExistingChain
+} from '../alkanes/transactionBuilder'
+import { formatVerificationResult, ChainExecutionStatus } from '../alkanes/chainVerification'
 /* @dev example call
   oyl alkane trace -params '{"txid":"e6561c7a8f80560c30a113c418bb56bde65694ac2b309a68549f35fdf2e785cb","vout":0}'
 
@@ -1098,7 +1112,7 @@ export const alkaneEstimateFee = new AlkanesCommand('estimate-fee')
       account: wallet.account,
       protostone,
       provider: wallet.provider,
-      feeRate: parseInt(options.feeRate),
+      feeRate: parseFloat(options.feeRate),
       frontendFee: options.frontendFee ? BigInt(options.frontendFee) : undefined,
       feeAddress: options.feeAddress,
       alkaneReceiverAddress: options.alkaneReceiver,
@@ -1121,4 +1135,444 @@ export const alkaneEstimateFee = new AlkanesCommand('estimate-fee')
         splitAmount: totalRequired
       }
     }, null, 2))
+  })
+
+// ============================================================================
+// Project Snowball - Chain Minting Command
+// ============================================================================
+
+export const alkaneChainMint = new AlkanesCommand('chain-mint')
+  .description('Execute Project Snowball: mint 25 alkane tokens in a single chain transaction')
+  .option(
+    '-p, --provider <provider>',
+    'Network provider type (regtest, bitcoin, testnet)',
+    'regtest'
+  )
+  .option(
+    '-c, --contract <contract>',
+    'Contract ID in format "block:tx" (e.g., "12345:1")'
+  )
+  .option(
+    '-r, --receiver <address>',
+    'Final receiver address for all minted tokens'
+  )
+  .option(
+    '--fee-rate <sats>',
+    'Fee rate in sat/vB',
+    '10'
+  )
+  .option(
+    '--child-count <count>',
+    'Number of child transactions (1-24)',
+    '24'
+  )
+  .option(
+    '--dry-run',
+    'Only calculate fees and preview the transaction plan, do not execute'
+  )
+  .option(
+    '--retry-max <count>',
+    'Maximum retry attempts for broadcasting',
+    '3'
+  )
+  .option(
+    '--retry-delay <ms>',
+    'Delay between retries in milliseconds',
+    '5000'
+  )
+  .option(
+    '--no-wait',
+    'Do not wait for transaction acceptance before broadcasting next'
+  )
+  .option(
+    '--enable-verification',
+    'Enable on-chain verification and asset balance checking after execution'
+  )
+  .option(
+    '--verification-timeout <minutes>',
+    'Maximum time to wait for verification (0 = no timeout)',
+    '30'
+  )
+  .option(
+    '--verbose',
+    'Enable verbose logging'
+  )
+  .action(async (options) => {
+    try {
+      console.log(`\n🚀 Project Snowball - Alkane Chain Minting`)
+      console.log(`=====================================\n`)
+
+      // 1. 验证必需参数
+      if (!options.contract) {
+        throw new Error('Contract ID is required. Use -c "block:tx" format')
+      }
+      
+      if (!options.receiver) {
+        throw new Error('Receiver address is required. Use -r <address>')
+      }
+
+      // 2. 解析合约ID
+      const contractParts = options.contract.split(':')
+      if (contractParts.length !== 2) {
+        throw new Error('Invalid contract ID format. Use "block:tx" format')
+      }
+      
+      const contractId: AlkaneContractId = {
+        block: contractParts[0],
+        tx: contractParts[1]
+      }
+
+      // 3. 验证参数
+      const feeRate = parseFloat(options.feeRate)
+      const childCount = parseInt(options.childCount)
+      
+      if (feeRate < 0.1 || feeRate > 1000) {
+        throw new Error('Fee rate must be between 0.1 and 1000 sat/vB')
+      }
+      
+      if (childCount < 1 || childCount > 24) {
+        throw new Error('Child count must be between 1 and 24')
+      }
+
+      console.log(`📋 Configuration:`)
+      console.log(`   Network: ${options.provider}`)
+      console.log(`   Contract: ${options.contract}`)
+      console.log(`   Receiver: ${options.receiver}`)
+      console.log(`   Fee Rate: ${feeRate} sat/vB`)
+      console.log(`   Child Transactions: ${childCount}`)
+      console.log(`   Dry Run: ${options.dryRun ? 'Yes' : 'No'}`)
+      console.log(``)
+
+      // 4. 创建钱包系统
+      const wallet: Wallet = new Wallet({ networkType: options.provider })
+      const provider = wallet.provider
+
+      console.log(`🔐 Generating wallet system...`)
+      const wallets = await generateChainMintingWalletsFromEnv(provider.network)
+      
+      console.log(`   Main Wallet: ${wallets.mainWallet.account.taproot.address}`)
+      console.log(`   Relay Wallet: ${wallets.relayWallet.account.nativeSegwit.address}`)
+      console.log(`   Relay Index: ${wallets.relayWalletIndex}`)
+      console.log(``)
+
+      // 5. 费用计算
+      console.log(`🧮 Calculating fees...`)
+      const feeCalculation = await performDryRunFeeCalculation({
+        wallets,
+        contractId,
+        childCount,
+        feeRate,
+        provider
+      })
+
+      // 计算详细的费用分解
+      const normalChildFee = Math.ceil(HARDCODED_TRANSACTION_SIZES.CHILD_TX_VSIZE * feeRate)
+      const finalChildFee = Math.ceil(HARDCODED_TRANSACTION_SIZES.FINAL_CHILD_TX_VSIZE * feeRate)
+      const normalChildCount = childCount - 1
+      const finalOutputDust = 330 // P2TR dust threshold
+      
+      console.log(`💰 Fee Calculation Result:`)
+      console.log(`   Parent TX: ${feeCalculation.parentTx.totalFee} sats (${HARDCODED_TRANSACTION_SIZES.PARENT_TX_VSIZE} vB × ${feeRate} sat/vB)`)
+      console.log(`   Normal Child TX (1-${normalChildCount}): ${normalChildFee} sats each (${HARDCODED_TRANSACTION_SIZES.CHILD_TX_VSIZE} vB × ${feeRate} sat/vB)`)
+      console.log(`   Final Child TX (${childCount}): ${finalChildFee} sats (${HARDCODED_TRANSACTION_SIZES.FINAL_CHILD_TX_VSIZE} vB × ${feeRate} sat/vB)`)
+      console.log(`   Total Child Fees: ${feeCalculation.totalChildFees} sats`)
+      console.log(`   Final Output Dust: ${finalOutputDust} sats (P2TR minimum)`)
+      console.log(`   Relay Fuel: ${feeCalculation.relayFuelAmount} sats (including final output)`)
+      console.log(`   Total Required: ${feeCalculation.totalRequiredFunding} sats`)
+      console.log(``)
+
+      // 6. 检查资金充足性
+      console.log(`💳 Checking balance...`)
+      const accountPortfolio = await utxo.accountUtxos({
+        account: wallets.mainWallet.account,
+        provider
+      })
+
+      const totalBtcBalance = accountPortfolio.accountTotalBalance
+      console.log(`   Available BTC: ${totalBtcBalance} sats`)
+      
+      if (totalBtcBalance < feeCalculation.totalRequiredFunding) {
+        throw new Error(
+          `Insufficient funds: need ${feeCalculation.totalRequiredFunding} sats, have ${totalBtcBalance} sats`
+        )
+      }
+      
+      console.log(`   ✅ Sufficient funds available`)
+      console.log(``)
+
+      // 7. Dry run模式
+      if (options.dryRun) {
+        console.log(`🎯 DRY RUN COMPLETE - No transactions were executed`)
+        console.log(``)
+        console.log(`📊 Execution Plan:`)
+        console.log(`   1. Build parent transaction (TX₀)`)
+        console.log(`   2. Build ${childCount} child transactions (TX₁-TX₂₄)`)
+        console.log(`   3. Broadcast parent transaction and wait for acceptance`)
+        console.log(`   4. Sequentially broadcast child transactions`)
+        console.log(`   5. Monitor final token balance at receiver address`)
+        console.log(``)
+        console.log(`💡 To execute for real, remove the --dry-run flag`)
+        return
+      }
+
+      // 8. 选择执行模式
+      console.log(`🏗️  Starting chain execution...`)
+      
+      // 配置广播参数
+      const broadcastConfig = {
+        maxRetries: parseInt(options.retryMax),
+        retryDelayMs: parseInt(options.retryDelay),
+        confirmationTimeoutMs: 0,  // 0 = 无超时限制
+        waitForAcceptance: true  // 等待进入交易池
+      }
+
+      // 配置验证参数
+      const verificationTimeoutMs = parseInt(options.verificationTimeout) * 60 * 1000 // 转换为毫秒
+      const verificationConfig = {
+        pollInterval: 10000,  // 10秒检查一次
+        maxWaitTime: verificationTimeoutMs,
+        verboseLogging: options.verbose || false,
+        checkAssetBalance: true
+      }
+
+      if (options.enableVerification) {
+        // 使用完整的执行+验证流程
+        console.log(`📦 执行模式: 完整验证 (包含链上验证和资产查询)`)
+        console.log(`   验证超时: ${options.verificationTimeout} 分钟`)
+        
+        const result = await executeCompleteChainMinting({
+          wallets,
+          contractId,
+          feeCalculation,
+          provider,
+          utxos: accountPortfolio.accountUtxos,
+          broadcastConfig,
+          finalReceiverAddress: options.receiver,
+          childCount,
+          verificationConfig
+        })
+
+        console.log(`\n🎉 PROJECT SNOWBALL 完整执行完成！`)
+        console.log(formatVerificationResult(result.verificationResult))
+
+      } else {
+        // 使用传统的执行流程（不验证）
+        console.log(`📦 执行模式: 标准执行 (不包含验证)`)
+        
+        // Step 1: 构建、签名、广播父交易
+        console.log(`\n📦 Step 1: 处理父交易`)
+        const parentTx = await buildSignAndBroadcastParentTransaction({
+          wallets,
+          contractId,
+          feeCalculation,
+          provider,
+          utxos: accountPortfolio.accountUtxos,
+          broadcastConfig
+        })
+        
+        console.log(`✅ 父交易完成: ${parentTx.expectedTxId}`)
+
+        // Step 2: 串行执行子交易链
+        console.log(`\n📦 Step 2: 开始串行子交易链`)
+        const childTxs = await buildAndBroadcastChildTransactionChain({
+          parentTxId: parentTx.expectedTxId,
+          initialRelayAmount: feeCalculation.relayFuelAmount,
+          wallets,
+          contractId,
+          childCount,
+          childTxFee: feeCalculation.childTx.totalFee,
+          finalReceiverAddress: options.receiver,
+          provider,
+          broadcastConfig
+        })
+
+        console.log(`\n🎉 PROJECT SNOWBALL 执行完成！`)
+        console.log(`   父交易: ${parentTx.expectedTxId}`)
+        console.log(`   子交易数量: ${childTxs.length}`)
+        console.log(`   最终输出: ${childTxs[childTxs.length - 1]?.outputValue || 0} sats`)
+      }
+
+    } catch (error) {
+      console.error(`\n💥 Chain Minting Failed:`)
+      
+      if (error instanceof ChainMintingError) {
+        console.error(`   Error Type: ${error.type}`)
+        console.error(`   Message: ${error.message}`)
+        if (error.details && options.verbose) {
+          console.error(`   Details:`, JSON.stringify(error.details, null, 2))
+        }
+      } else {
+        console.error(`   ${error.message}`)
+        if (options.verbose) {
+          console.error(`   Stack:`, error.stack)
+        }
+      }
+      
+      console.error(`\n💡 Troubleshooting tips:`)
+      console.error(`   1. Check that BATCH_MINT_MNEMONIC is set in your .env file`)
+      console.error(`   2. Ensure sufficient BTC balance in your main wallet`)
+      console.error(`   3. Verify the contract ID exists and is a valid mint contract`)
+      console.error(`   4. Try running with --dry-run first to check the setup`)
+      console.error(`   5. Use --verbose for more detailed error information`)
+      
+      process.exit(1)
+    }
+  })
+
+// ============================================================================
+// 链上验证命令
+// ============================================================================
+
+export const alkaneVerifyChain = new AlkanesCommand('verify-chain')
+  .description('Verify an existing Project Snowball chain minting execution')
+  .option(
+    '-p, --provider <provider>',
+    'Network provider type (regtest, bitcoin, testnet)',
+    'regtest'
+  )
+  .requiredOption(
+    '-c, --contract <contract>',
+    'Contract ID in format "block:tx" (e.g., "12345:1")'
+  )
+  .requiredOption(
+    '-r, --receiver <address>',
+    'Final receiver address to verify'
+  )
+  .requiredOption(
+    '--parent-tx <txId>',
+    'Parent transaction ID'
+  )
+  .requiredOption(
+    '--child-txs <txIds>',
+    'Comma-separated list of child transaction IDs'
+  )
+  .option(
+    '--timeout <minutes>',
+    'Maximum time to wait for verification (0 = no timeout)',
+    '30'
+  )
+  .option(
+    '--verbose',
+    'Enable verbose logging'
+  )
+  .action(async (options) => {
+    try {
+      console.log(`\n🔍 Project Snowball - 链上验证`)
+      console.log(`=====================================\n`)
+
+      // 验证必需参数
+      if (!options.contract) {
+        throw new Error('Contract ID is required. Use -c "block:tx" format')
+      }
+      
+      if (!options.receiver) {
+        throw new Error('Receiver address is required. Use -r <address>')
+      }
+
+      if (!options.parentTx) {
+        throw new Error('Parent transaction ID is required. Use --parent-tx <txId>')
+      }
+
+      if (!options.childTxs) {
+        throw new Error('Child transaction IDs are required. Use --child-txs <txId1,txId2,...>')
+      }
+
+      // 解析参数
+      const contractParts = options.contract.split(':')
+      if (contractParts.length !== 2) {
+        throw new Error('Invalid contract ID format. Use "block:tx" format')
+      }
+      
+      const contractId: AlkaneContractId = {
+        block: contractParts[0],
+        tx: contractParts[1]
+      }
+
+      const childTxIds = options.childTxs.split(',').map((id: string) => id.trim())
+      const timeoutMs = parseInt(options.timeout) * 60 * 1000
+
+      console.log(`📋 验证配置:`)
+      console.log(`   Network: ${options.provider}`)
+      console.log(`   Contract: ${options.contract}`)
+      console.log(`   Receiver: ${options.receiver}`)
+      console.log(`   Parent TX: ${options.parentTx}`)
+      console.log(`   Child TXs: ${childTxIds.length} transactions`)
+      console.log(`   Timeout: ${options.timeout} minutes`)
+      console.log(``)
+
+      // 创建提供者
+      const wallet: Wallet = new Wallet({ networkType: options.provider })
+      const provider = wallet.provider
+
+      // 配置验证参数
+      const verificationConfig = {
+        pollInterval: 10000,  // 10秒检查一次
+        maxWaitTime: timeoutMs,
+        verboseLogging: options.verbose || false,
+        checkAssetBalance: true,
+        onProgress: (status: ChainExecutionStatus) => {
+          const confirmed = status.confirmedTransactions
+          const total = status.totalTransactions
+          const percentage = Math.round((confirmed / total) * 100)
+          
+          console.log(`🔍 验证进度: ${confirmed}/${total} (${percentage}%) - ${status.overallStatus}`)
+        }
+      }
+
+      // 执行验证
+      console.log(`🔍 开始验证链条...`)
+      const verificationResult = await verifyExistingChain({
+        parentTxId: options.parentTx,
+        childTxIds,
+        contractId,
+        finalReceiverAddress: options.receiver,
+        provider,
+        verificationConfig
+      })
+
+      // 显示结果
+      console.log(`\n🎯 验证完成！`)
+      console.log(formatVerificationResult(verificationResult))
+
+      // 最终状态
+      if (verificationResult.overallStatus === 'completed' && 
+          verificationResult.finalAssetBalance?.verified) {
+        console.log(`\n🎉 链条验证成功！`)
+        console.log(`   所有 ${childTxIds.length} 笔子交易已确认`)
+        console.log(`   接收地址包含期望的 alkane tokens`)
+        console.log(`\n💡 Project Snowball 执行完全成功！`)
+      } else {
+        console.log(`\n⚠️  验证发现问题：`)
+        if (verificationResult.overallStatus !== 'completed') {
+          console.log(`   - 交易确认状态: ${verificationResult.overallStatus}`)
+        }
+        if (verificationResult.finalAssetBalance && !verificationResult.finalAssetBalance.verified) {
+          console.log(`   - 资产余额不匹配`)
+        }
+      }
+
+    } catch (error) {
+      console.error(`\n💥 Chain Verification Failed:`)
+      
+      if (error instanceof ChainMintingError) {
+        console.error(`   Error Type: ${error.type}`)
+        console.error(`   Message: ${error.message}`)
+        if (error.details && options.verbose) {
+          console.error(`   Details:`, JSON.stringify(error.details, null, 2))
+        }
+      } else {
+        console.error(`   ${error.message}`)
+        if (options.verbose) {
+          console.error(`   Stack:`, error.stack)
+        }
+      }
+      
+      console.error(`\n💡 Troubleshooting tips:`)
+      console.error(`   1. Verify all transaction IDs are correct and exist on-chain`)
+      console.error(`   2. Check that the contract ID is valid`)
+      console.error(`   3. Ensure sufficient time for transaction confirmations`)
+      console.error(`   4. Use --verbose for more detailed information`)
+      
+      process.exit(1)
+    }
   })
