@@ -18,7 +18,8 @@ import {
   ChainMintingError,
   ChainMintingErrorType,
   validateDustThreshold,
-  AddressType
+  AddressType,
+  BroadcastResult
 } from './chainMinting'
 import { Provider } from '../provider/provider'
 import { FormattedUtxo } from '../utxo/types'
@@ -28,7 +29,11 @@ import {
   formatInputsToSign,
   getAddressType
 } from '../shared/utils'
-import { broadcastSingleTransaction, waitForTransactionAcceptance } from './transactionBroadcaster'
+import { 
+  broadcastSingleTransaction, 
+  broadcastSingleTransactionWithRpc,
+  waitForTransactionAcceptance
+} from './transactionBroadcaster'
 import { 
   VerificationConfig, 
   ChainExecutionStatus,
@@ -204,14 +209,31 @@ export async function buildSignAndBroadcastParentTransaction(
     console.log(`✅ 父交易签名完成`)
     console.log(`   真实交易ID: ${realTxId}`)
     
-    // 8. 立即广播父交易
+    // 8. 立即广播父交易 - 优先使用自定义RPC
     console.log(`📡 广播父交易: ${realTxId}`)
-    const broadcastResult = await broadcastSingleTransaction(
-      signedPsbtHex,
-      realTxId,
-      provider,
-      config.broadcastConfig
-    )
+    
+    // 检查是否配置了自定义RPC
+    const useCustomRpc = process.env.RPC_PROVIDER && process.env.RPC_PROVIDER !== 'sandshrew'
+    
+    let broadcastResult: BroadcastResult
+    if (useCustomRpc) {
+      console.log(`   使用自定义RPC提供者: ${process.env.RPC_PROVIDER}`)
+      broadcastResult = await broadcastSingleTransactionWithRpc(
+        signedPsbtHex,
+        realTxId,
+        undefined, // 使用默认的RPC客户端
+        provider.networkType,
+        config.broadcastConfig
+      )
+    } else {
+      console.log(`   使用默认Provider广播`)
+      broadcastResult = await broadcastSingleTransaction(
+        signedPsbtHex,
+        realTxId,
+        provider,
+        config.broadcastConfig
+      )
+    }
     
     if (!broadcastResult.success) {
       throw new ChainMintingError(
@@ -797,14 +819,31 @@ export async function buildAndBroadcastChildTransactionChain({
       
       const childTx = await buildChildTransaction(childConfig)
       
-      // 2. 立即广播这笔交易
+      // 2. 立即广播这笔交易 - 优先使用自定义RPC
       console.log(`📡 广播子交易 ${i}: ${childTx.expectedTxId}`)
-      const broadcastResult = await broadcastSingleTransaction(
-        childTx.psbtHex,
-        childTx.expectedTxId,
-        provider,
-        broadcastConfig
-      )
+      
+      // 检查是否配置了自定义RPC
+      const useCustomRpc = process.env.RPC_PROVIDER && process.env.RPC_PROVIDER !== 'sandshrew'
+      
+      let broadcastResult: BroadcastResult
+      if (useCustomRpc) {
+        console.log(`   使用自定义RPC提供者: ${process.env.RPC_PROVIDER}`)
+        broadcastResult = await broadcastSingleTransactionWithRpc(
+          childTx.psbtHex,
+          childTx.expectedTxId,
+          undefined, // 使用默认的RPC客户端
+          provider.networkType,
+          broadcastConfig
+        )
+      } else {
+        console.log(`   使用默认Provider广播`)
+        broadcastResult = await broadcastSingleTransaction(
+          childTx.psbtHex,
+          childTx.expectedTxId,
+          provider,
+          broadcastConfig
+        )
+      }
       
       if (!broadcastResult.success) {
         throw new ChainMintingError(
