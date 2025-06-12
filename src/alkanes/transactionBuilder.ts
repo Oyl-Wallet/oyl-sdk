@@ -44,47 +44,7 @@ import {
 // 父交易(TX₀)构建器
 // ============================================================================
 
-/**
- * 构建父交易 - 仅构建不广播（向后兼容）
- */
-export async function buildParentTransactionSimple({
-  wallets,
-  contractId,
-  feeCalculation,
-  provider,
-  utxos
-}: {
-  wallets: ChainMintingWallets
-  contractId: AlkaneContractId
-  feeCalculation: ChainMintingFeeCalculation
-  provider: Provider
-  utxos: FormattedUtxo[]
-}): Promise<BuiltTransaction> {
-  
-  const { } = { wallets, contractId, feeCalculation, provider, utxos }
-  
-  throw new ChainMintingError(
-    ChainMintingErrorType.TRANSACTION_BUILD_ERROR,
-    '该函数已废弃，请使用 buildSignAndBroadcastParentTransaction',
-    { deprecated: true }
-  )
-}
 
-/**
- * 构建父交易 - 仅构建不广播（向后兼容）
- */
-export async function buildParentTransaction(
-  config: ParentTransactionConfig & { utxos: FormattedUtxo[] }
-): Promise<BuiltTransaction> {
-  
-  const { } = config
-  
-  throw new ChainMintingError(
-    ChainMintingErrorType.TRANSACTION_BUILD_ERROR,
-    '该函数已废弃，请使用 buildSignAndBroadcastParentTransaction',
-    { deprecated: true }
-  )
-}
 
 /**
  * 构建、签名、广播父交易并等待进入交易池
@@ -101,10 +61,7 @@ export async function buildSignAndBroadcastParentTransaction(
   const { wallets, contractId, feeCalculation, provider, utxos } = config
   
   try {
-    console.log(`🏗️  构建父交易 (TX₀)...`)
-    console.log(`   合约ID: ${contractId.block}:${contractId.tx}`)
-    console.log(`   中继燃料: ${feeCalculation.relayFuelAmount} sats`)
-    console.log(`   父交易费用: ${feeCalculation.parentTx.totalFee} sats`)
+    console.log(`🏗️  构建父交易: ${contractId.block}:${contractId.tx}, 中继燃料: ${feeCalculation.relayFuelAmount} sats`)
     
     // 1. 选择足够的UTXO
     const totalNeeded = feeCalculation.totalRequiredFunding
@@ -118,7 +75,7 @@ export async function buildSignAndBroadcastParentTransaction(
       )
     }
     
-    console.log(`   选择 ${selectedUtxos.utxos.length} 个UTXO，总计 ${selectedUtxos.totalAmount} sats`)
+    console.log(`   输入: ${selectedUtxos.utxos.length} UTXOs (${selectedUtxos.totalAmount} sats)`)
     
     // 2. 创建PSBT
     const psbt = new bitcoin.Psbt({ network: provider.network })
@@ -143,13 +100,7 @@ export async function buildSignAndBroadcastParentTransaction(
       calldata: calldata
     })
     
-    // 打印protostone详细信息
-    console.log(`   ✅ Protostone构建完成:`)
-    console.log(`      协议标签: 1`)
-    console.log(`      Calldata: [${contractId.block}, ${contractId.tx}, 77]`)
-    console.log(`      Pointer: ${StandardVoutLayout.RELAY_OUTPUT} (中继输出)`)
-    console.log(`      RefundPointer: ${StandardVoutLayout.FINAL_CHANGE} (找零输出)`)
-    console.log(`      字节长度: ${protostone.length} bytes`)
+    console.log(`   Protostone: [${contractId.block}, ${contractId.tx}, 77] (${protostone.length} bytes)`)
     
     // 5. 严格按照标准vout布局添加输出
     
@@ -161,14 +112,12 @@ export async function buildSignAndBroadcastParentTransaction(
       address: relayAddress,
       value: feeCalculation.relayFuelAmount
     })
-    console.log(`   ✅ vout=0: 中继输出 ${feeCalculation.relayFuelAmount} sats → ${relayAddress}`)
     
-    // vout=1: OP_RETURN指令中心
     psbt.addOutput({
       script: protostone,
       value: 0
     })
-    console.log(`   ✅ vout=1: OP_RETURN指令 (${protostone.length} bytes)`)
+    console.log(`   输出: vout0=${feeCalculation.relayFuelAmount}→中继, vout1=OP_RETURN`)
     
     // vout=2: 找零输出 - 返回主钱包
     const totalOutputs = feeCalculation.relayFuelAmount
@@ -183,9 +132,7 @@ export async function buildSignAndBroadcastParentTransaction(
         address: mainAddress,
         value: changeAmount
       })
-      console.log(`   ✅ vout=2: 找零输出 ${changeAmount} sats → ${mainAddress}`)
-    } else {
-      console.log(`   ⚠️  找零金额 ${changeAmount} 低于dust阈值，合并到手续费`)
+      console.log(`   找零: ${changeAmount} sats`)
     }
     
     // 6. 格式化PSBT用于签名
@@ -195,9 +142,7 @@ export async function buildSignAndBroadcastParentTransaction(
       network: provider.network,
     })
     
-    console.log(`✅ 父交易构建完成，开始签名...`)
-    console.log(`   vSize: ${feeCalculation.parentTx.vSize} vB`)
-    console.log(`   手续费: ${minerFee} sats (${feeCalculation.parentTx.feeRate} sat/vB)`)
+    console.log(`   费用: ${minerFee} sats (${feeCalculation.parentTx.feeRate} sat/vB, ${feeCalculation.parentTx.vSize} vB)`)
     
     // 7. 立即签名并获取真实交易ID
     const { signedPsbtHex, realTxId } = await signPsbtAndGetTxId(
@@ -206,18 +151,14 @@ export async function buildSignAndBroadcastParentTransaction(
       '父交易'
     )
     
-    console.log(`✅ 父交易签名完成`)
-    console.log(`   真实交易ID: ${realTxId}`)
+    console.log(`✅ 父交易签名完成: ${realTxId}`)
     
     // 8. 立即广播父交易 - 优先使用自定义RPC
-    console.log(`📡 广播父交易: ${realTxId}`)
-    
-    // 检查是否配置了自定义RPC
     const useCustomRpc = process.env.RPC_PROVIDER && process.env.RPC_PROVIDER !== 'sandshrew'
+    console.log(`📡 广播父交易: ${realTxId} (${useCustomRpc ? process.env.RPC_PROVIDER : 'Provider'})`)
     
     let broadcastResult: BroadcastResult
     if (useCustomRpc) {
-      console.log(`   使用自定义RPC提供者: ${process.env.RPC_PROVIDER}`)
       broadcastResult = await broadcastSingleTransactionWithRpc(
         signedPsbtHex,
         realTxId,
@@ -226,7 +167,6 @@ export async function buildSignAndBroadcastParentTransaction(
         config.broadcastConfig
       )
     } else {
-      console.log(`   使用默认Provider广播`)
       broadcastResult = await broadcastSingleTransaction(
         signedPsbtHex,
         realTxId,
@@ -243,10 +183,8 @@ export async function buildSignAndBroadcastParentTransaction(
       )
     }
     
-    console.log(`✅ 父交易广播成功: ${broadcastResult.txId}`)
-    console.log(`✅ 父交易已进入交易池，等待1秒确保节点同步...`)
-    await new Promise(resolve => setTimeout(resolve, 1000)) // 1秒延迟
-    console.log(`🔄 可以开始子交易链`)
+    console.log(`✅ 父交易广播成功，等待1秒同步...`)
+    await new Promise(resolve => setTimeout(resolve, 1000))
     
     return {
       psbtHex: signedPsbtHex,
@@ -451,7 +389,7 @@ async function signPsbtAndGetTxId(
   txType: string
 ): Promise<{ signedPsbtHex: string, realTxId: string }> {
   try {
-    console.log(`🔐 签名${txType}...`)
+    // 简化签名日志
     
     // 签名PSBT
     const signedResult = await signer.signAllInputs({ rawPsbtHex: psbtHex })
@@ -460,7 +398,7 @@ async function signPsbtAndGetTxId(
     const signedPsbt = bitcoin.Psbt.fromHex(signedResult.signedHexPsbt)
     const realTxId = signedPsbt.extractTransaction().getId()
     
-    console.log(`✅ ${txType}签名完成，真实交易ID: ${realTxId}`)
+    // 签名成功日志已在调用者处显示
     
     return {
       signedPsbtHex: signedResult.signedHexPsbt,
@@ -624,10 +562,7 @@ export async function buildChildTransaction(
   } = config
   
   try {
-    console.log(`🔗 构建子交易 ${transactionIndex}/24...`)
-    console.log(`   父交易: ${parentTxId}:0`)
-    console.log(`   输入金额: ${parentOutputValue} sats`)
-    console.log(`   是否最后: ${isLastTransaction}`)
+    console.log(`🔗 构建子交易 ${transactionIndex}/24: ${parentOutputValue} sats${isLastTransaction ? ' (最后)' : ''}`)
     
     // 1. 创建PSBT
     const psbt = new bitcoin.Psbt({ network: provider.network })
@@ -665,22 +600,27 @@ export async function buildChildTransaction(
       calldata: calldata
     })
 
-    // 打印protostone详细信息
-    console.log(`   ✅ Protostone构建完成:`)
-    console.log(`      协议标签: 1`)
-    console.log(`      Calldata: [${contractId.block}, ${contractId.tx}, 77]`)
-    console.log(`      Pointer: ${StandardVoutLayout.RELAY_OUTPUT} (中继输出)`)
-    console.log(`      RefundPointer: ${StandardVoutLayout.RELAY_OUTPUT} (中继输出)`)
-    console.log(`      字节长度: ${protostone.length} bytes`)
+    // Protostone: 类似父交易，略过详细日志
     
     // 4. 计算输出金额和目标地址
-    const outputAmount = parentOutputValue - childTxFee
+    let outputAmount: number
+    let actualChildTxFee: number
+    
+    if (isLastTransaction) {
+      outputAmount = 330
+      actualChildTxFee = parentOutputValue - outputAmount
+      console.log(`   最后交易: 输出=${outputAmount}, 费用=${actualChildTxFee} sats`)
+    } else {
+      actualChildTxFee = childTxFee
+      outputAmount = parentOutputValue - actualChildTxFee
+    }
+    
     const targetAddress = isLastTransaction 
       ? finalReceiverAddress 
       : wallets.relayWallet.account.nativeSegwit.address
     
     // 5. 验证输出金额满足dust阈值
-    const targetAddressType = isLastTransaction ? AddressType.P2WPKH : AddressType.P2WPKH
+    const targetAddressType = isLastTransaction ? AddressType.P2TR : AddressType.P2WPKH
     validateDustThreshold(outputAmount, targetAddressType)
     
     // 6. 严格按照标准vout布局添加输出
@@ -690,14 +630,12 @@ export async function buildChildTransaction(
       address: targetAddress,
       value: outputAmount
     })
-    console.log(`   ✅ vout=0: ${isLastTransaction ? '最终' : '中继'}输出 ${outputAmount} sats → ${targetAddress}`)
     
-    // vout=1: OP_RETURN指令中心
     psbt.addOutput({
       script: protostone,
       value: 0
     })
-    console.log(`   ✅ vout=1: OP_RETURN指令 (${protostone.length} bytes)`)
+    console.log(`   输出: ${outputAmount} sats→${isLastTransaction ? '最终' : '中继'}, 费用=${actualChildTxFee} sats`)
     
     // 7. 格式化PSBT用于签名
     const formatted = await formatInputsToSign({
@@ -706,9 +644,7 @@ export async function buildChildTransaction(
       network: provider.network,
     })
     
-    console.log(`✅ 子交易 ${transactionIndex} 构建完成，开始签名...`)
-    console.log(`   输出金额: ${outputAmount} sats`)
-    console.log(`   手续费: ${childTxFee} sats`)
+    // 简化签名日志，金额信息已在上面显示
     
     // 8. 立即签名并获取真实交易ID
     const { signedPsbtHex, realTxId } = await signPsbtAndGetTxId(
@@ -717,8 +653,7 @@ export async function buildChildTransaction(
       `子交易${transactionIndex}`
     )
     
-    console.log(`✅ 子交易 ${transactionIndex} 签名完成`)
-    console.log(`   真实交易ID: ${realTxId}`)
+    console.log(`✅ 子交易 ${transactionIndex} 签名完成: ${realTxId}`)
     
     return {
       psbtHex: signedPsbtHex,
@@ -766,12 +701,7 @@ export async function buildAndBroadcastChildTransactionChain({
 }): Promise<BuiltTransaction[]> {
   
   try {
-    console.log(`🔗 串行执行子交易链...`)
-    console.log(`   父交易ID: ${parentTxId}`)
-    console.log(`   初始中继金额: ${initialRelayAmount} sats`)
-    console.log(`   子交易数量: ${childCount}`)
-    console.log(`   单笔手续费: ${childTxFee} sats`)
-    console.log(`   最终接收地址: ${finalReceiverAddress}`)
+    console.log(`🔗 串行执行子交易链: ${childCount}笔, ${initialRelayAmount} sats燃料`)
     
     // 验证链条完整性
     const totalFeesNeeded = childTxFee * childCount
@@ -791,9 +721,7 @@ export async function buildAndBroadcastChildTransactionChain({
     for (let i = 1; i <= childCount; i++) {
       const isLastTransaction = (i === childCount)
       
-      console.log(`\n📦 Step ${i}: 构建、签名、广播子交易 ${i}/${childCount}`)
-      console.log(`   依赖交易: ${currentParentTxId}:0`)
-      console.log(`   输入金额: ${currentOutputValue} sats`)
+      console.log(`\n📦 Step ${i}: 子交易 ${i}/${childCount} (输入: ${currentOutputValue} sats)`)
       
       // 验证输入金额是否足够
       if (currentOutputValue < childTxFee) {
@@ -820,14 +748,11 @@ export async function buildAndBroadcastChildTransactionChain({
       const childTx = await buildChildTransaction(childConfig)
       
       // 2. 立即广播这笔交易 - 优先使用自定义RPC
-      console.log(`📡 广播子交易 ${i}: ${childTx.expectedTxId}`)
-      
-      // 检查是否配置了自定义RPC
       const useCustomRpc = process.env.RPC_PROVIDER && process.env.RPC_PROVIDER !== 'sandshrew'
+      console.log(`📡 广播子交易 ${i}: ${childTx.expectedTxId.substring(0,8)}... (${useCustomRpc ? process.env.RPC_PROVIDER : 'Provider'})`)
       
       let broadcastResult: BroadcastResult
       if (useCustomRpc) {
-        console.log(`   使用自定义RPC提供者: ${process.env.RPC_PROVIDER}`)
         broadcastResult = await broadcastSingleTransactionWithRpc(
           childTx.psbtHex,
           childTx.expectedTxId,
@@ -836,7 +761,6 @@ export async function buildAndBroadcastChildTransactionChain({
           broadcastConfig
         )
       } else {
-        console.log(`   使用默认Provider广播`)
         broadcastResult = await broadcastSingleTransaction(
           childTx.psbtHex,
           childTx.expectedTxId,
@@ -853,15 +777,10 @@ export async function buildAndBroadcastChildTransactionChain({
         )
       }
       
-      console.log(`✅ 子交易 ${i} 广播成功: ${broadcastResult.txId}`)
+      console.log(`✅ 子交易 ${i} 广播成功${isLastTransaction ? ' (最后)' : ''}`)
       
-      // 3. 广播成功即表示已进入交易池，短暂延迟确保节点同步
       if (!isLastTransaction) {
-        console.log(`✅ 子交易 ${i} 已进入交易池，等待1秒确保节点同步...`)
-        await new Promise(resolve => setTimeout(resolve, 1000)) // 1秒延迟
-        console.log(`🔄 继续构建下一笔交易`)
-      } else {
-        console.log(`✅ 最后一笔子交易 ${i} 广播完成`)
+        await new Promise(resolve => setTimeout(resolve, 1000))
       }
       
       // 4. 记录交易并更新链条状态
@@ -871,18 +790,15 @@ export async function buildAndBroadcastChildTransactionChain({
       currentParentTxId = childTx.expectedTxId  // 真实交易ID
       currentOutputValue = childTx.outputValue
       
-      console.log(`   链条状态更新 → 下一笔父交易: ${currentParentTxId}:0 (${currentOutputValue} sats)`)
+      // 略过链条状态日志，信息重复
     }
     
-    console.log(`\n🎉 子交易链串行执行完成！`)
-    console.log(`   总交易数: ${childTransactions.length}`)
-    console.log(`   最终输出: ${childTransactions[childTransactions.length - 1].outputValue} sats`)
-    console.log(`   总广播费用: ${childTxFee * childCount} sats`)
+    console.log(`\n🎉 子交易链完成: ${childTransactions.length}笔, 最终${childTransactions[childTransactions.length - 1].outputValue} sats`)
     
     return childTransactions
     
   } catch (error) {
-    console.error(`💥 子交易链构建失败:`, error.message)
+    console.error(`💥 子交易链失败:`, error.message)
     throw error instanceof ChainMintingError ? error : new ChainMintingError(
       ChainMintingErrorType.TRANSACTION_BUILD_ERROR,
       `子交易链构建失败: ${error.message}`,
@@ -891,37 +807,6 @@ export async function buildAndBroadcastChildTransactionChain({
   }
 }
 
-/**
- * 构建子交易链 - 仅构建不广播（向后兼容）
- */
-export async function buildChildTransactionChain({
-  parentTxId,
-  initialRelayAmount,
-  wallets,
-  contractId,
-  childCount = 24,
-  childTxFee,
-  finalReceiverAddress,
-  provider
-}: {
-  parentTxId: string
-  initialRelayAmount: number
-  wallets: ChainMintingWallets
-  contractId: AlkaneContractId
-  childCount?: number
-  childTxFee: number
-  finalReceiverAddress: string
-  provider: Provider
-}): Promise<BuiltTransaction[]> {
-  
-  const { } = { parentTxId, initialRelayAmount, wallets, contractId, childCount, childTxFee, finalReceiverAddress, provider }
-  
-  throw new ChainMintingError(
-    ChainMintingErrorType.TRANSACTION_BUILD_ERROR,
-    '该函数已废弃，请使用 buildAndBroadcastChildTransactionChain',
-    { deprecated: true }
-  )
-}
 
 // ============================================================================
 // 子交易验证器
@@ -1149,14 +1034,9 @@ export async function executeCompleteChainMinting({
 }> {
   
   try {
-    console.log(`🚀 开始完整的Project Snowball执行流程...`)
-    console.log(`   合约: ${contractId.block}:${contractId.tx}`)
-    console.log(`   接收地址: ${finalReceiverAddress}`)
-    console.log(`   子交易数: ${childCount}`)
-    console.log('')
+    console.log(`🚀 PROJECT SNOWBALL 执行: ${contractId.block}:${contractId.tx}, ${childCount}笔→${finalReceiverAddress}`)
 
-    // Step 1: 构建并广播父交易
-    console.log(`📦 Step 1: 执行父交易`)
+    console.log(`\n📦 Step 1: 执行父交易`)
     const parentTx = await buildSignAndBroadcastParentTransaction({
       wallets,
       contractId,
@@ -1166,9 +1046,8 @@ export async function executeCompleteChainMinting({
       broadcastConfig
     })
     
-    console.log(`✅ 父交易完成: ${parentTx.expectedTxId}`)
+    console.log(`✅ 父交易完成`)
 
-    // Step 2: 构建并广播子交易链
     console.log(`\n📦 Step 2: 执行子交易链`)
     const childTxs = await buildAndBroadcastChildTransactionChain({
       parentTxId: parentTx.expectedTxId,
@@ -1182,10 +1061,9 @@ export async function executeCompleteChainMinting({
       broadcastConfig
     })
 
-    console.log(`✅ 子交易链完成: ${childTxs.length} 笔交易`)
+    console.log(`✅ 子交易链完成`)
 
-    // Step 3: 开始链上验证
-    console.log(`\n📦 Step 3: 开始链上验证`)
+    console.log(`\n📦 Step 3: 链上验证`)
     const verificationResult = await verifyChainExecution({
       parentTx,
       childTxs,
@@ -1200,7 +1078,7 @@ export async function executeCompleteChainMinting({
           const total = status.totalTransactions
           const percentage = Math.round((confirmed / total) * 100)
           
-          console.log(`🔍 验证进度: ${confirmed}/${total} (${percentage}%) - ${status.overallStatus}`)
+          console.log(`🔍 验证: ${confirmed}/${total} (${percentage}%) ${status.overallStatus}`)
           
           // 调用用户提供的回调
           if (verificationConfig.onProgress) {
@@ -1210,7 +1088,7 @@ export async function executeCompleteChainMinting({
       }
     })
 
-    console.log(`\n🎉 PROJECT SNOWBALL 执行完成！`)
+    console.log(`\n🎉 PROJECT SNOWBALL 完成！`)
     
     return {
       parentTx,
@@ -1250,10 +1128,7 @@ export async function verifyExistingChain({
 }): Promise<ChainExecutionStatus> {
   
   try {
-    console.log(`🔍 验证现有链条...`)
-    console.log(`   父交易: ${parentTxId}`)
-    console.log(`   子交易数: ${childTxIds.length}`)
-    console.log(`   接收地址: ${finalReceiverAddress}`)
+    console.log(`🔍 验证链条: ${parentTxId.substring(0,8)}..., ${childTxIds.length}笔→${finalReceiverAddress}`)
 
     // 构造BuiltTransaction对象用于验证
     const parentTx: BuiltTransaction = {

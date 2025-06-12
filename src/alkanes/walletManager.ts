@@ -10,8 +10,7 @@ import * as dotenv from 'dotenv'
 import { 
   Account, 
   mnemonicToAccount, 
-  getWalletPrivateKeys,
-  generateMnemonic 
+  getWalletPrivateKeys
 } from '../account'
 import { Signer } from '../signer'
 import { 
@@ -158,21 +157,14 @@ export async function generateChainMintingWallets(
 ): Promise<ChainMintingWallets & { relayWalletIndex: number }> {
   
   try {
-    console.log(`🔐 生成链式铸造钱包系统...`)
-    console.log(`   网络: ${config.network === bitcoin.networks.bitcoin ? 'mainnet' : 
-                       config.network === bitcoin.networks.testnet ? 'testnet' : 'regtest'}`)
-    
-    // 生成随机中继钱包索引（如果未提供）
+    const networkName = config.network === bitcoin.networks.bitcoin ? 'mainnet' : 
+                       config.network === bitcoin.networks.testnet ? 'testnet' : 'regtest'
     const relayWalletIndex = config.relayWalletIndex || generateRandomWalletIndex()
-    console.log(`   中继钱包索引: ${relayWalletIndex}`)
     
-    // 1. 生成主钱包（index=0）
+    console.log(`🔐 生成钱包: ${networkName}, 中继索引=${relayWalletIndex}`)
+    
     const mainWallet = await generateMainWallet(config)
-    console.log(`   主钱包地址: ${mainWallet.account.taproot.address}`)
-    
-    // 2. 生成中继钱包（随机index）
     const relayWallet = await generateRelayWallet(config, relayWalletIndex)
-    console.log(`   中继钱包地址: ${relayWallet.account.nativeSegwit.address}`)
     
     // 3. 验证钱包配置
     const wallets: ChainMintingWallets = { mainWallet, relayWallet }
@@ -186,14 +178,12 @@ export async function generateChainMintingWallets(
       )
     }
     
-    console.log(`✅ 钱包系统生成成功`)
-    console.log(`   主钱包类型: ${getAddressTypeName(validation.mainWallet.addressType)}`)
-    console.log(`   中继钱包类型: ${getAddressTypeName(validation.relayWallet.addressType)}`)
+    console.log(`✅ 钱包生成成功: 主(${getAddressTypeName(validation.mainWallet.addressType)}), 中继(${getAddressTypeName(validation.relayWallet.addressType)})`)
     
     return { ...wallets, relayWalletIndex }
     
   } catch (error) {
-    console.error(`💥 钱包生成失败:`, error.message)
+    console.error(`💥 钱包失败:`, error.message)
     throw error instanceof ChainMintingError ? error : new ChainMintingError(
       ChainMintingErrorType.INVALID_ADDRESS_TYPE,
       `钱包生成失败: ${error.message}`,
@@ -271,7 +261,7 @@ async function generateRelayWallet(
 }> {
   
   try {
-    console.log(`   使用同一助记词，中继钱包index=${relayWalletIndex}`)
+    // 使用同一助记词，中继索引=${relayWalletIndex}
     
     // 创建中继账户 - 使用随机index，强制使用P2WPKH获得最低费用
     const account = mnemonicToAccount({
@@ -363,12 +353,11 @@ export async function generateChainMintingWalletsFromEnv(
     throw new ChainMintingError(
       ChainMintingErrorType.INVALID_ADDRESS_TYPE,
       '环境变量BATCH_MINT_MNEMONIC格式无效',
-      { mnemonic: maskMnemonic(batchMintMnemonic) }
+      { reason: 'invalid_mnemonic_format' }
     )
   }
   
   console.log(`🔐 从环境变量生成钱包系统`)
-  console.log(`   助记词: ${maskMnemonic(batchMintMnemonic)}`)
   
   return generateChainMintingWallets({
     batchMintMnemonic,
@@ -432,10 +421,7 @@ function validateMainWallet(
     // 检查地址类型
     const addressType = detectAddressType(address, network)
     
-    // 主钱包推荐使用P2TR，但不强制
-    if (addressType !== AddressType.P2TR) {
-      console.warn(`⚠️  主钱包建议使用Taproot地址，当前使用: ${getAddressTypeName(addressType)}`)
-    }
+    // 简化日志，主钱包推荐P2TR但不强制
     
     // 检查角色配置
     if (mainWallet.role !== 'funding' && mainWallet.role !== 'receiver') {
@@ -547,62 +533,7 @@ function validateWalletConsistency(
 // 钱包信息显示
 // ============================================================================
 
-/**
- * 格式化钱包信息显示
- */
-export function formatWalletInfo(wallets: ChainMintingWallets): string {
-  const mainWallet = wallets.mainWallet
-  const relayWallet = wallets.relayWallet
-  
-  return `
-🔐 链式铸造钱包配置:
-├─ 主钱包 (资金提供 & 最终接收):
-│  ├─ 地址: ${mainWallet.account.taproot.address}
-│  ├─ 类型: ${getAddressTypeName(AddressType.P2TR)}
-│  └─ 角色: ${mainWallet.role}
-└─ 中继钱包 (交易中继):
-   ├─ 地址: ${relayWallet.account.nativeSegwit.address}
-   ├─ 类型: ${getAddressTypeName(AddressType.P2WPKH)}
-   └─ 角色: ${relayWallet.role}
-`
-}
 
-/**
- * 格式化验证结果显示
- */
-export function formatValidationResult(result: WalletValidationResult): string {
-  const status = result.isValid ? '✅ 通过' : '❌ 失败'
-  
-  let output = `🔍 钱包验证结果: ${status}\n`
-  
-  // 主钱包验证结果
-  const mainStatus = result.mainWallet.isValid ? '✅' : '❌'
-  output += `├─ 主钱包: ${mainStatus} ${result.mainWallet.address}\n`
-  if (result.mainWallet.errors.length > 0) {
-    result.mainWallet.errors.forEach(error => {
-      output += `│  └─ ❌ ${error}\n`
-    })
-  }
-  
-  // 中继钱包验证结果
-  const relayStatus = result.relayWallet.isValid ? '✅' : '❌'
-  output += `└─ 中继钱包: ${relayStatus} ${result.relayWallet.address}\n`
-  if (result.relayWallet.errors.length > 0) {
-    result.relayWallet.errors.forEach(error => {
-      output += `   └─ ❌ ${error}\n`
-    })
-  }
-  
-  // 总体错误
-  if (result.errors.length > 0) {
-    output += `\n❌ 总体错误:\n`
-    result.errors.forEach(error => {
-      output += `   - ${error}\n`
-    })
-  }
-  
-  return output
-}
 
 // ============================================================================
 // 安全工具
@@ -647,25 +578,3 @@ export function validateMnemonic(mnemonic: string): boolean {
   }
 }
 
-/**
- * 生成钱包配置摘要（用于日志记录）
- */
-export function generateWalletSummary(wallets: ChainMintingWallets): {
-  mainWalletAddress: string
-  relayWalletAddress: string
-  addressTypes: {
-    main: string
-    relay: string
-  }
-  timestamp: number
-} {
-  return {
-    mainWalletAddress: wallets.mainWallet.account.taproot.address,
-    relayWalletAddress: wallets.relayWallet.account.nativeSegwit.address,
-    addressTypes: {
-      main: getAddressTypeName(AddressType.P2TR),
-      relay: getAddressTypeName(AddressType.P2WPKH)
-    },
-    timestamp: Date.now()
-  }
-}

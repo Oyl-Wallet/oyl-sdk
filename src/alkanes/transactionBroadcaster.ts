@@ -42,7 +42,11 @@ export async function broadcastSingleTransactionWithRpc(
   
   console.log(`📡 开始广播交易 (自定义RPC): ${expectedTxId}`)
   
-  for (let attempt = 0; attempt <= config.maxRetries; attempt++) {
+  // 检查是否为无限重试模式 (maxRetries = 0)
+  const infiniteRetry = config.maxRetries === 0
+  let attempt = 0
+  
+  while (infiniteRetry ? true : attempt <= config.maxRetries) {
     try {
       console.log(`   第 ${attempt + 1} 次尝试...`)
       
@@ -50,15 +54,7 @@ export async function broadcastSingleTransactionWithRpc(
       const psbt = bitcoin.Psbt.fromHex(psbtHex)
       const rawTx = psbt.extractTransaction().toHex()
       
-      // 先测试交易是否有效（如果支持）
-      if (client.testMemPoolAccept) {
-        const isValid = await client.testMemPoolAccept(rawTx)
-        if (!isValid) {
-          throw new Error('交易验证失败：不被交易池接受')
-        }
-      }
-      
-      // 广播交易
+      // 直接广播交易
       const actualTxId = await client.sendRawTransaction(rawTx)
       
       // 验证交易ID是否匹配
@@ -80,6 +76,7 @@ export async function broadcastSingleTransactionWithRpc(
       lastError = error.message
       
       console.error(`❌ 第 ${attempt + 1} 次广播失败 (自定义RPC): ${error.message}`)
+      console.error(`   详细错误信息:`, error)
       
       // 检查是否为致命错误（无需重试）
       if (isFatalBroadcastError(error.message)) {
@@ -87,13 +84,21 @@ export async function broadcastSingleTransactionWithRpc(
         break
       }
       
-      // 如果不是最后一次尝试，等待后重试
-      if (attempt < config.maxRetries) {
+      // 无限重试或常规重试的延迟处理
+      if (infiniteRetry) {
+        // 无限重试模式：使用固定2秒间隔
+        console.log(`⏳ 等待 2000ms 后重试...`)
+        await sleep(2000)
+      } else if (attempt < config.maxRetries) {
+        // 有限重试模式：使用指数退避
         const delay = calculateRetryDelay(attempt, config.retryDelayMs)
         console.log(`⏳ 等待 ${delay}ms 后重试...`)
         await sleep(delay)
       }
     }
+    
+    // 手动递增 attempt
+    attempt++
   }
   
   // 所有重试都失败
@@ -124,7 +129,11 @@ export async function broadcastSingleTransaction(
   
   console.log(`📡 开始广播交易: ${expectedTxId}`)
   
-  for (let attempt = 0; attempt <= config.maxRetries; attempt++) {
+  // 检查是否为无限重试模式 (maxRetries = 0)
+  const infiniteRetry = config.maxRetries === 0
+  let attempt = 0
+  
+  while (infiniteRetry ? true : attempt <= config.maxRetries) {
     try {
       console.log(`   第 ${attempt + 1} 次尝试...`)
       
@@ -151,6 +160,7 @@ export async function broadcastSingleTransaction(
       lastError = error.message
       
       console.error(`❌ 第 ${attempt + 1} 次广播失败: ${error.message}`)
+      console.error(`   详细错误信息:`, error)
       
       // 检查是否为致命错误（无需重试）
       if (isFatalBroadcastError(error.message)) {
@@ -158,13 +168,21 @@ export async function broadcastSingleTransaction(
         break
       }
       
-      // 如果不是最后一次尝试，等待后重试
-      if (attempt < config.maxRetries) {
+      // 无限重试或常规重试的延迟处理
+      if (infiniteRetry) {
+        // 无限重试模式：使用固定2秒间隔
+        console.log(`⏳ 等待 2000ms 后重试...`)
+        await sleep(2000)
+      } else if (attempt < config.maxRetries) {
+        // 有限重试模式：使用指数退避
         const delay = calculateRetryDelay(attempt, config.retryDelayMs)
         console.log(`⏳ 等待 ${delay}ms 后重试...`)
         await sleep(delay)
       }
     }
+    
+    // 手动递增 attempt
+    attempt++
   }
   
   // 所有重试都失败
@@ -531,123 +549,7 @@ export async function broadcastTransactionChain({
   }
 }
 
-// ============================================================================
-// 高级广播策略
-// ============================================================================
 
-/**
- * 并行广播子交易（实验性功能）
- * 
- * 在父交易确认后，并行广播多个子交易以提高速度
- * 注意：这可能导致依赖关系问题，仅在特定场景下使用
- */
-export async function broadcastChildTransactionsInParallel({
-  childTransactions,
-  provider,
-  config = DEFAULT_BROADCAST_CONFIG,
-  batchSize = 3 // 每批并行广播的数量
-}: {
-  childTransactions: BuiltTransaction[]
-  provider: Provider
-  config?: BroadcastConfig
-  batchSize?: number
-}): Promise<BroadcastResult[]> {
-  
-  console.log(`🔄 并行广播 ${childTransactions.length} 个子交易，批次大小: ${batchSize}`)
-  
-  const results: BroadcastResult[] = []
-  
-  // 分批并行处理
-  for (let i = 0; i < childTransactions.length; i += batchSize) {
-    const batch = childTransactions.slice(i, i + batchSize)
-    console.log(`📦 处理批次 ${Math.floor(i / batchSize) + 1}: 交易 ${i + 1}-${Math.min(i + batchSize, childTransactions.length)}`)
-    
-    // 并行广播当前批次
-    const batchPromises = batch.map(tx => 
-      broadcastSingleTransaction(tx.psbtHex, tx.expectedTxId, provider, config)
-    )
-    
-    const batchResults = await Promise.allSettled(batchPromises)
-    
-    // 处理批次结果
-    for (let j = 0; j < batchResults.length; j++) {
-      const result = batchResults[j]
-      const txIndex = i + j + 1
-      
-      if (result.status === 'fulfilled') {
-        results.push(result.value)
-        if (result.value.success) {
-          console.log(`✅ 批次交易 ${txIndex} 广播成功`)
-        } else {
-          console.error(`❌ 批次交易 ${txIndex} 广播失败: ${result.value.error}`)
-        }
-      } else {
-        console.error(`💥 批次交易 ${txIndex} 处理异常: ${result.reason}`)
-        results.push({
-          txId: batch[j].expectedTxId,
-          timestamp: Date.now(),
-          retryCount: 0,
-          success: false,
-          error: result.reason?.toString()
-        })
-      }
-    }
-    
-    // 批次间添加延迟
-    if (i + batchSize < childTransactions.length) {
-      await sleep(2000)
-    }
-  }
-  
-  return results
-}
-
-/**
- * 智能广播策略
- * 
- * 根据网络状况和交易依赖关系自动选择最佳广播策略
- */
-export async function smartBroadcastTransactionChain({
-  parentTransaction,
-  childTransactions,
-  provider,
-  config = DEFAULT_BROADCAST_CONFIG
-}: {
-  parentTransaction: BuiltTransaction
-  childTransactions: BuiltTransaction[]
-  provider: Provider
-  config?: BroadcastConfig
-}): Promise<BatchBroadcastResult> {
-  
-  console.log(`🧠 智能广播策略分析...`)
-  
-  // 分析网络状况
-  const networkAnalysis = await analyzeNetworkConditions(provider)
-  console.log(`📊 网络分析结果: 拥塞程度=${networkAnalysis.congestionLevel}, 推荐费率=${networkAnalysis.recommendedFeeRate}`)
-  
-  // 根据网络状况选择策略
-  if (networkAnalysis.congestionLevel === 'low' && childTransactions.length <= 10) {
-    console.log(`🚀 选择顺序广播策略（网络状况良好）`)
-    return broadcastTransactionChain({
-      parentTransaction,
-      childTransactions,
-      provider,
-      config
-    })
-  } else {
-    console.log(`🐌 选择保守顺序广播策略（网络拥塞或交易量大）`)
-    return broadcastTransactionChain({
-      parentTransaction,
-      childTransactions,
-      provider,
-      config: {
-        ...config,
-        retryDelayMs: config.retryDelayMs * 2, // 增加重试延迟
-        confirmationTimeoutMs: config.confirmationTimeoutMs * 1.5 // 增加确认超时
-      }
-    })
-  }
-}
 
 // ============================================================================
 // 辅助工具函数
@@ -705,44 +607,6 @@ function shouldContinueAfterChildFailure(
   return false
 }
 
-/**
- * 分析网络状况（简化版本）
- */
-async function analyzeNetworkConditions(_provider: Provider): Promise<{
-  congestionLevel: 'low' | 'medium' | 'high'
-  recommendedFeeRate: number
-  mempoolSize: number
-}> {
-  
-  try {
-    // 简化的网络分析 - 使用费用估算API
-    const feeEstimates = await _provider.esplora.getFeeEstimates()
-    
-    // 基于费用估算判断网络拥塞程度
-    const fastFee = feeEstimates['1'] || 10
-    let congestionLevel: 'low' | 'medium' | 'high' = 'low'
-    
-    if (fastFee > 50) {
-      congestionLevel = 'high'
-    } else if (fastFee > 20) {
-      congestionLevel = 'medium'
-    }
-    
-    return {
-      congestionLevel,
-      recommendedFeeRate: Math.max(1, Math.ceil(fastFee)),
-      mempoolSize: 0 // 无法获取准确的mempool大小
-    }
-    
-  } catch (error) {
-    console.warn(`⚠️  网络分析失败，使用默认值: ${error.message}`)
-    return {
-      congestionLevel: 'medium',
-      recommendedFeeRate: 10,
-      mempoolSize: 0
-    }
-  }
-}
 
 /**
  * 睡眠函数
@@ -751,203 +615,7 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
-// ============================================================================
-// 广播状态监控
-// ============================================================================
 
-/**
- * 监控交易链的广播状态
- */
-export async function monitorTransactionChainStatus({
-  parentTxId,
-  childTxIds,
-  provider,
-  pollIntervalMs = 10000, // 每10秒检查一次
-  maxMonitoringTimeMs = 300000 // 最多监控5分钟
-}: {
-  parentTxId: string
-  childTxIds: string[]
-  provider: Provider
-  pollIntervalMs?: number
-  maxMonitoringTimeMs?: number
-}): Promise<{
-  parentStatus: { confirmed: boolean, blockHeight?: number }
-  childStatuses: Array<{ txId: string, confirmed: boolean, blockHeight?: number }>
-  allConfirmed: boolean
-  monitoringTime: number
-}> {
-  
-  const startTime = Date.now()
-  console.log(`📊 开始监控交易链状态...`)
-  console.log(`   父交易: ${parentTxId}`)
-  console.log(`   子交易数量: ${childTxIds.length}`)
-  
-  while (Date.now() - startTime < maxMonitoringTimeMs) {
-    try {
-      // 检查父交易状态
-      const parentStatus = await provider.esplora.getTxStatus(parentTxId)
-      
-      // 检查所有子交易状态
-      const childStatuses = await Promise.all(
-        childTxIds.map(async (txId) => {
-          try {
-            const status = await provider.esplora.getTxStatus(txId)
-            return {
-              txId,
-              confirmed: status.confirmed,
-              blockHeight: status.block_height
-            }
-          } catch {
-            return {
-              txId,
-              confirmed: false,
-              blockHeight: undefined
-            }
-          }
-        })
-      )
-      
-      // 检查是否全部确认
-      const allConfirmed = parentStatus.confirmed && childStatuses.every(s => s.confirmed)
-      
-      const confirmedCount = childStatuses.filter(s => s.confirmed).length
-      console.log(`📈 状态更新: 父交易=${parentStatus.confirmed ? '已确认' : '未确认'}, 子交易=${confirmedCount}/${childTxIds.length}确认`)
-      
-      if (allConfirmed) {
-        console.log(`🎉 所有交易已确认!`)
-        return {
-          parentStatus: {
-            confirmed: parentStatus.confirmed,
-            blockHeight: parentStatus.block_height
-          },
-          childStatuses,
-          allConfirmed: true,
-          monitoringTime: Date.now() - startTime
-        }
-      }
-      
-    } catch (error) {
-      console.warn(`⚠️  状态检查失败: ${error.message}`)
-    }
-    
-    await sleep(pollIntervalMs)
-  }
-  
-  console.log(`⏰ 监控超时，返回最后状态`)
-  
-  // 返回最后的状态检查结果
-  try {
-    const parentStatus = await provider.esplora.getTxStatus(parentTxId)
-    const childStatuses = await Promise.all(
-      childTxIds.map(async (txId) => ({
-        txId,
-        confirmed: false,
-        blockHeight: undefined
-      }))
-    )
-    
-    return {
-      parentStatus: {
-        confirmed: parentStatus.confirmed,
-        blockHeight: parentStatus.block_height
-      },
-      childStatuses,
-      allConfirmed: false,
-      monitoringTime: Date.now() - startTime
-    }
-  } catch {
-    return {
-      parentStatus: { confirmed: false },
-      childStatuses: childTxIds.map(txId => ({ txId, confirmed: false })),
-      allConfirmed: false,
-      monitoringTime: Date.now() - startTime
-    }
-  }
-}
-
-// ============================================================================
-// 格式化和报告功能
-// ============================================================================
-
-/**
- * 格式化批量广播结果
- */
-export function formatBatchBroadcastResult(result: BatchBroadcastResult): string {
-  const parentStatus = result.parentTx.success ? '✅ 成功' : '❌ 失败'
-  const successRate = result.successCount / (result.successCount + result.failureCount)
-  
-  let output = `\n📡 交易链广播结果:\n`
-  output += `├─ 父交易: ${parentStatus} (${result.parentTx.txId})\n`
-  output += `├─ 子交易: ${result.successCount}/${result.childTxs.length} 成功\n`
-  output += `├─ 成功率: ${(successRate * 100).toFixed(1)}%\n`
-  output += `└─ 整体状态: ${result.allSuccessful ? '✅ 全部成功' : '⚠️  部分失败'}\n`
-  
-  // 详细的失败信息
-  const failedTxs = result.childTxs.filter(tx => !tx.success)
-  if (failedTxs.length > 0) {
-    output += `\n❌ 失败的子交易:\n`
-    failedTxs.forEach((tx, index) => {
-      output += `   ${index + 1}. ${tx.txId}: ${tx.error}\n`
-    })
-  }
-  
-  return output
-}
-
-/**
- * 生成广播摘要报告
- */
-export function generateBroadcastSummary(result: BatchBroadcastResult): {
-  summary: {
-    totalTransactions: number
-    successfulTransactions: number
-    failedTransactions: number
-    successRate: number
-    parentSuccess: boolean
-    allChildrenSuccess: boolean
-  }
-  details: {
-    parentTx: {
-      txId: string
-      success: boolean
-      retryCount: number
-      error?: string
-    }
-    childTxs: Array<{
-      txId: string
-      success: boolean
-      retryCount: number
-      error?: string
-    }>
-  }
-  timestamp: number
-} {
-  return {
-    summary: {
-      totalTransactions: result.successCount + result.failureCount,
-      successfulTransactions: result.successCount,
-      failedTransactions: result.failureCount,
-      successRate: result.successCount / (result.successCount + result.failureCount),
-      parentSuccess: result.parentTx.success,
-      allChildrenSuccess: result.childTxs.every(tx => tx.success)
-    },
-    details: {
-      parentTx: {
-        txId: result.parentTx.txId,
-        success: result.parentTx.success,
-        retryCount: result.parentTx.retryCount,
-        error: result.parentTx.error
-      },
-      childTxs: result.childTxs.map(tx => ({
-        txId: tx.txId,
-        success: tx.success,
-        retryCount: tx.retryCount,
-        error: tx.error
-      }))
-    },
-    timestamp: Date.now()
-  }
-}
 
 // ============================================================================
 // 自定义RPC广播功能
@@ -1071,43 +739,6 @@ export async function broadcastTransactionChainWithRpc({
   }
 }
 
-/**
- * 智能广播交易链 - 自动选择最佳RPC
- */
-export async function smartBroadcastTransactionChainWithRpc({
-  parentTransaction,
-  childTransactions,
-  networkType,
-  config = DEFAULT_BROADCAST_CONFIG
-}: {
-  parentTransaction: BuiltTransaction
-  childTransactions: BuiltTransaction[]
-  networkType?: string
-  config?: BroadcastConfig
-}): Promise<BatchBroadcastResult> {
-  
-  console.log(`🧠 智能广播模式 - 自动选择最佳RPC`)
-  
-  try {
-    // 尝试使用自定义RPC
-    return await broadcastTransactionChainWithRpc({
-      parentTransaction,
-      childTransactions,
-      networkType,
-      config
-    })
-  } catch (error) {
-    console.warn(`⚠️  自定义RPC广播失败，回退到默认Provider: ${error.message}`)
-    
-    // 这里可以添加回退到Provider的逻辑
-    // 但需要Provider实例，所以暂时抛出错误
-    throw new ChainMintingError(
-      ChainMintingErrorType.BROADCAST_ERROR,
-      `智能广播失败: ${error.message}`,
-      { error: error.message }
-    )
-  }
-}
 
 // ============================================================================
 // 工具函数已在上方定义

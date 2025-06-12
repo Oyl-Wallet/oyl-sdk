@@ -471,11 +471,8 @@ export {
   validateAddressType,
   validateDustThreshold,
   getAddressTypeName,
-  formatWalletInfo,
-  formatValidationResult,
   maskMnemonic,
   validateMnemonic,
-  generateWalletSummary,
   type WalletGenerationConfig,
   type WalletValidationResult
 } from './walletManager'
@@ -485,8 +482,6 @@ export {
 // ============================================================================
 
 export {
-  buildParentTransaction,
-  buildParentTransactionSimple,
   validateParentTransactionOutputs,
   validateParentTransactionFees,
   formatParentTransactionResult,
@@ -494,7 +489,6 @@ export {
   validateParentTransactionParams,
   generateParentTransactionSummary,
   buildChildTransaction,
-  buildChildTransactionChain,
   validateChildTransactionOutputs,
   validateChildTransactionChain,
   calculateChildChainStatistics,
@@ -509,12 +503,7 @@ export {
 export {
   broadcastSingleTransaction,
   waitForTransactionAcceptance,
-  broadcastTransactionChain,
-  broadcastChildTransactionsInParallel,
-  smartBroadcastTransactionChain,
-  monitorTransactionChainStatus,
-  formatBatchBroadcastResult,
-  generateBroadcastSummary
+  broadcastTransactionChain
 } from './transactionBroadcaster'
 
 // ============================================================================

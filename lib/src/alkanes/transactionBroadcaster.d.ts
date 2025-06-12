@@ -46,99 +46,12 @@ export declare function broadcastTransactionChain({ parentTransaction, childTran
     config?: BroadcastConfig;
 }): Promise<BatchBroadcastResult>;
 /**
- * 并行广播子交易（实验性功能）
- *
- * 在父交易确认后，并行广播多个子交易以提高速度
- * 注意：这可能导致依赖关系问题，仅在特定场景下使用
- */
-export declare function broadcastChildTransactionsInParallel({ childTransactions, provider, config, batchSize }: {
-    childTransactions: BuiltTransaction[];
-    provider: Provider;
-    config?: BroadcastConfig;
-    batchSize?: number;
-}): Promise<BroadcastResult[]>;
-/**
- * 智能广播策略
- *
- * 根据网络状况和交易依赖关系自动选择最佳广播策略
- */
-export declare function smartBroadcastTransactionChain({ parentTransaction, childTransactions, provider, config }: {
-    parentTransaction: BuiltTransaction;
-    childTransactions: BuiltTransaction[];
-    provider: Provider;
-    config?: BroadcastConfig;
-}): Promise<BatchBroadcastResult>;
-/**
- * 监控交易链的广播状态
- */
-export declare function monitorTransactionChainStatus({ parentTxId, childTxIds, provider, pollIntervalMs, // 每10秒检查一次
-maxMonitoringTimeMs }: {
-    parentTxId: string;
-    childTxIds: string[];
-    provider: Provider;
-    pollIntervalMs?: number;
-    maxMonitoringTimeMs?: number;
-}): Promise<{
-    parentStatus: {
-        confirmed: boolean;
-        blockHeight?: number;
-    };
-    childStatuses: Array<{
-        txId: string;
-        confirmed: boolean;
-        blockHeight?: number;
-    }>;
-    allConfirmed: boolean;
-    monitoringTime: number;
-}>;
-/**
- * 格式化批量广播结果
- */
-export declare function formatBatchBroadcastResult(result: BatchBroadcastResult): string;
-/**
- * 生成广播摘要报告
- */
-export declare function generateBroadcastSummary(result: BatchBroadcastResult): {
-    summary: {
-        totalTransactions: number;
-        successfulTransactions: number;
-        failedTransactions: number;
-        successRate: number;
-        parentSuccess: boolean;
-        allChildrenSuccess: boolean;
-    };
-    details: {
-        parentTx: {
-            txId: string;
-            success: boolean;
-            retryCount: number;
-            error?: string;
-        };
-        childTxs: Array<{
-            txId: string;
-            success: boolean;
-            retryCount: number;
-            error?: string;
-        }>;
-    };
-    timestamp: number;
-};
-/**
  * 使用自定义RPC广播交易链
  */
 export declare function broadcastTransactionChainWithRpc({ parentTransaction, childTransactions, rpcClient, networkType, config }: {
     parentTransaction: BuiltTransaction;
     childTransactions: BuiltTransaction[];
     rpcClient?: IRpcClient;
-    networkType?: string;
-    config?: BroadcastConfig;
-}): Promise<BatchBroadcastResult>;
-/**
- * 智能广播交易链 - 自动选择最佳RPC
- */
-export declare function smartBroadcastTransactionChainWithRpc({ parentTransaction, childTransactions, networkType, config }: {
-    parentTransaction: BuiltTransaction;
-    childTransactions: BuiltTransaction[];
     networkType?: string;
     config?: BroadcastConfig;
 }): Promise<BatchBroadcastResult>;

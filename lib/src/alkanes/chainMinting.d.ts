@@ -380,9 +380,9 @@ export declare const SAFETY_PARAMS: {
     MAX_FEE_RATE: number;
 };
 export { performDryRunFeeCalculation, calculateActualTransactionFees, compareFeeCalculations, formatFeeCalculationResult, HARDCODED_TRANSACTION_SIZES } from './feeCalculation';
-export { generateChainMintingWallets, generateChainMintingWalletsFromEnv, validateWalletConfiguration, detectAddressType, validateAddressType, validateDustThreshold, getAddressTypeName, formatWalletInfo, formatValidationResult, maskMnemonic, validateMnemonic, generateWalletSummary, type WalletGenerationConfig, type WalletValidationResult } from './walletManager';
-export { buildParentTransaction, buildParentTransactionSimple, validateParentTransactionOutputs, validateParentTransactionFees, formatParentTransactionResult, calculateActualParentFee, validateParentTransactionParams, generateParentTransactionSummary, buildChildTransaction, buildChildTransactionChain, validateChildTransactionOutputs, validateChildTransactionChain, calculateChildChainStatistics, formatChildChainResult, generateChildChainSummary } from './transactionBuilder';
-export { broadcastSingleTransaction, waitForTransactionAcceptance, broadcastTransactionChain, broadcastChildTransactionsInParallel, smartBroadcastTransactionChain, monitorTransactionChainStatus, formatBatchBroadcastResult, generateBroadcastSummary } from './transactionBroadcaster';
+export { generateChainMintingWallets, generateChainMintingWalletsFromEnv, validateWalletConfiguration, detectAddressType, validateAddressType, validateDustThreshold, getAddressTypeName, maskMnemonic, validateMnemonic, type WalletGenerationConfig, type WalletValidationResult } from './walletManager';
+export { validateParentTransactionOutputs, validateParentTransactionFees, formatParentTransactionResult, calculateActualParentFee, validateParentTransactionParams, generateParentTransactionSummary, buildChildTransaction, validateChildTransactionOutputs, validateChildTransactionChain, calculateChildChainStatistics, formatChildChainResult, generateChildChainSummary } from './transactionBuilder';
+export { broadcastSingleTransaction, waitForTransactionAcceptance, broadcastTransactionChain } from './transactionBroadcaster';
 /**
  * 链式铸造系统主要接口
  */

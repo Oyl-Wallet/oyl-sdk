@@ -75,14 +75,6 @@ export declare function generateChainMintingWalletsFromEnv(network: bitcoin.Netw
  */
 export declare function validateWalletConfiguration(wallets: ChainMintingWallets, network: bitcoin.Network): WalletValidationResult;
 /**
- * 格式化钱包信息显示
- */
-export declare function formatWalletInfo(wallets: ChainMintingWallets): string;
-/**
- * 格式化验证结果显示
- */
-export declare function formatValidationResult(result: WalletValidationResult): string;
-/**
  * 安全地显示助记词（部分隐藏）
  */
 export declare function maskMnemonic(mnemonic: string): string;
@@ -90,15 +82,3 @@ export declare function maskMnemonic(mnemonic: string): string;
  * 验证助记词格式
  */
 export declare function validateMnemonic(mnemonic: string): boolean;
-/**
- * 生成钱包配置摘要（用于日志记录）
- */
-export declare function generateWalletSummary(wallets: ChainMintingWallets): {
-    mainWalletAddress: string;
-    relayWalletAddress: string;
-    addressTypes: {
-        main: string;
-        relay: string;
-    };
-    timestamp: number;
-};

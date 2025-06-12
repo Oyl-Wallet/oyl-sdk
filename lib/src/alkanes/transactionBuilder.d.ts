@@ -10,22 +10,6 @@ import { Provider } from '../provider/provider';
 import { FormattedUtxo } from '../utxo/types';
 import { VerificationConfig, ChainExecutionStatus } from './chainVerification';
 /**
- * 构建父交易 - 仅构建不广播（向后兼容）
- */
-export declare function buildParentTransactionSimple({ wallets, contractId, feeCalculation, provider, utxos }: {
-    wallets: ChainMintingWallets;
-    contractId: AlkaneContractId;
-    feeCalculation: ChainMintingFeeCalculation;
-    provider: Provider;
-    utxos: FormattedUtxo[];
-}): Promise<BuiltTransaction>;
-/**
- * 构建父交易 - 仅构建不广播（向后兼容）
- */
-export declare function buildParentTransaction(config: ParentTransactionConfig & {
-    utxos: FormattedUtxo[];
-}): Promise<BuiltTransaction>;
-/**
  * 构建、签名、广播父交易并等待进入交易池
  *
  * 严格按照标准vout布局：
@@ -128,19 +112,6 @@ export declare function buildAndBroadcastChildTransactionChain({ parentTxId, ini
     finalReceiverAddress: string;
     provider: Provider;
     broadcastConfig: any;
-}): Promise<BuiltTransaction[]>;
-/**
- * 构建子交易链 - 仅构建不广播（向后兼容）
- */
-export declare function buildChildTransactionChain({ parentTxId, initialRelayAmount, wallets, contractId, childCount, childTxFee, finalReceiverAddress, provider }: {
-    parentTxId: string;
-    initialRelayAmount: number;
-    wallets: ChainMintingWallets;
-    contractId: AlkaneContractId;
-    childCount?: number;
-    childTxFee: number;
-    finalReceiverAddress: string;
-    provider: Provider;
 }): Promise<BuiltTransaction[]>;
 /**
  * 验证子交易输出布局
