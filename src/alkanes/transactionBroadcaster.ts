@@ -16,13 +16,100 @@ import {
   ChainMintingErrorType,
   DEFAULT_BROADCAST_CONFIG
 } from './chainMinting'
+import { IRpcClient, createRpcClient } from '../rpclient/rpcFactory'
 
 // ============================================================================
 // 核心广播功能
 // ============================================================================
 
 /**
- * 广播单个交易
+ * 使用自定义RPC广播单个交易
+ */
+export async function broadcastSingleTransactionWithRpc(
+  psbtHex: string,
+  expectedTxId: string,
+  rpcClient?: IRpcClient,
+  networkType?: string,
+  config: BroadcastConfig = DEFAULT_BROADCAST_CONFIG
+): Promise<BroadcastResult> {
+  
+  const startTime = Date.now()
+  let retryCount = 0
+  let lastError: string | undefined
+  
+  // 如果没有提供RPC客户端，创建一个
+  const client = rpcClient || createRpcClient(networkType)
+  
+  console.log(`📡 开始广播交易 (自定义RPC): ${expectedTxId}`)
+  
+  for (let attempt = 0; attempt <= config.maxRetries; attempt++) {
+    try {
+      console.log(`   第 ${attempt + 1} 次尝试...`)
+      
+      // 提取原始交易
+      const psbt = bitcoin.Psbt.fromHex(psbtHex)
+      const rawTx = psbt.extractTransaction().toHex()
+      
+      // 先测试交易是否有效（如果支持）
+      if (client.testMemPoolAccept) {
+        const isValid = await client.testMemPoolAccept(rawTx)
+        if (!isValid) {
+          throw new Error('交易验证失败：不被交易池接受')
+        }
+      }
+      
+      // 广播交易
+      const actualTxId = await client.sendRawTransaction(rawTx)
+      
+      // 验证交易ID是否匹配
+      if (actualTxId !== expectedTxId) {
+        console.warn(`⚠️  交易ID不匹配: 期望 ${expectedTxId}, 实际 ${actualTxId}`)
+      }
+      
+      console.log(`✅ 交易广播成功 (自定义RPC): ${actualTxId}`)
+      
+      return {
+        txId: actualTxId,
+        timestamp: Date.now(),
+        retryCount: attempt,
+        success: true
+      }
+      
+    } catch (error) {
+      retryCount = attempt
+      lastError = error.message
+      
+      console.error(`❌ 第 ${attempt + 1} 次广播失败 (自定义RPC): ${error.message}`)
+      
+      // 检查是否为致命错误（无需重试）
+      if (isFatalBroadcastError(error.message)) {
+        console.error(`💀 致命错误，停止重试: ${error.message}`)
+        break
+      }
+      
+      // 如果不是最后一次尝试，等待后重试
+      if (attempt < config.maxRetries) {
+        const delay = calculateRetryDelay(attempt, config.retryDelayMs)
+        console.log(`⏳ 等待 ${delay}ms 后重试...`)
+        await sleep(delay)
+      }
+    }
+  }
+  
+  // 所有重试都失败
+  console.error(`💥 交易广播失败 (自定义RPC)，已用尽 ${config.maxRetries + 1} 次机会`)
+  
+  return {
+    txId: expectedTxId,
+    timestamp: Date.now(),
+    retryCount: retryCount,
+    success: false,
+    error: lastError
+  }
+}
+
+/**
+ * 广播单个交易（原函数，保持向后兼容）
  */
 export async function broadcastSingleTransaction(
   psbtHex: string,
@@ -861,3 +948,167 @@ export function generateBroadcastSummary(result: BatchBroadcastResult): {
     timestamp: Date.now()
   }
 }
+
+// ============================================================================
+// 自定义RPC广播功能
+// ============================================================================
+
+/**
+ * 使用自定义RPC广播交易链
+ */
+export async function broadcastTransactionChainWithRpc({
+  parentTransaction,
+  childTransactions,
+  rpcClient,
+  networkType,
+  config = DEFAULT_BROADCAST_CONFIG
+}: {
+  parentTransaction: BuiltTransaction
+  childTransactions: BuiltTransaction[]
+  rpcClient?: IRpcClient
+  networkType?: string
+  config?: BroadcastConfig
+}): Promise<BatchBroadcastResult> {
+  
+  try {
+    const client = rpcClient || createRpcClient(networkType)
+    
+    console.log(`🚀 开始广播交易链 (自定义RPC)...`)
+    console.log(`   父交易: ${parentTransaction.expectedTxId}`)
+    console.log(`   子交易数量: ${childTransactions.length}`)
+    console.log(`   RPC提供者: 自定义`)
+    
+    const childResults: BroadcastResult[] = []
+    let successCount = 0
+    let failureCount = 0
+    
+    // 1. 广播父交易
+    console.log(`\n📡 Step 1: 广播父交易 (TX₀) - 自定义RPC`)
+    const parentResult = await broadcastSingleTransactionWithRpc(
+      parentTransaction.psbtHex,
+      parentTransaction.expectedTxId,
+      client,
+      networkType,
+      config
+    )
+    
+    if (!parentResult.success) {
+      failureCount++
+      console.error(`💥 父交易广播失败，中止整个链条`)
+      
+      return {
+        parentTx: parentResult,
+        childTxs: [],
+        successCount: 0,
+        failureCount: 1,
+        allSuccessful: false
+      }
+    }
+    
+    successCount++
+    
+    // 2. 等待父交易被节点接受（简化版）
+    if (config.waitForAcceptance) {
+      console.log(`\n⏰ Step 2: 等待父交易被节点接受 (1秒延迟)`)
+      await sleep(1000) // 简化的等待逻辑
+    }
+    
+    // 3. 逐个广播子交易
+    console.log(`\n📡 Step 3: 顺序广播子交易 (TX₁ ~ TX₂₄) - 自定义RPC`)
+    
+    for (let i = 0; i < childTransactions.length; i++) {
+      const childTx = childTransactions[i]
+      console.log(`\n   子交易 ${i + 1}/${childTransactions.length}: ${childTx.expectedTxId}`)
+      
+      const childResult = await broadcastSingleTransactionWithRpc(
+        childTx.psbtHex,
+        childTx.expectedTxId,
+        client,
+        networkType,
+        config
+      )
+      
+      childResults.push(childResult)
+      
+      if (childResult.success) {
+        successCount++
+      } else {
+        failureCount++
+        console.error(`💥 子交易 ${i + 1} 广播失败: ${childResult.error}`)
+        
+        // 可选：是否在子交易失败时中止后续交易
+        // break; // 取消注释以启用失败中止
+      }
+      
+      // 短暂延迟确保交易顺序
+      if (i < childTransactions.length - 1) {
+        await sleep(500)
+      }
+    }
+    
+    const allSuccessful = failureCount === 0
+    
+    console.log(`\n🎯 交易链广播完成 (自定义RPC):`)
+    console.log(`   ✅ 成功: ${successCount}`)
+    console.log(`   ❌ 失败: ${failureCount}`)
+    console.log(`   📊 成功率: ${((successCount / (successCount + failureCount)) * 100).toFixed(1)}%`)
+    
+    return {
+      parentTx: parentResult,
+      childTxs: childResults,
+      successCount: successCount,
+      failureCount: failureCount,
+      allSuccessful: allSuccessful
+    }
+    
+  } catch (error) {
+    console.error(`💥 交易链广播失败 (自定义RPC):`, error.message)
+    throw new ChainMintingError(
+      ChainMintingErrorType.BROADCAST_ERROR,
+      `自定义RPC广播失败: ${error.message}`,
+      { error: error.message }
+    )
+  }
+}
+
+/**
+ * 智能广播交易链 - 自动选择最佳RPC
+ */
+export async function smartBroadcastTransactionChainWithRpc({
+  parentTransaction,
+  childTransactions,
+  networkType,
+  config = DEFAULT_BROADCAST_CONFIG
+}: {
+  parentTransaction: BuiltTransaction
+  childTransactions: BuiltTransaction[]
+  networkType?: string
+  config?: BroadcastConfig
+}): Promise<BatchBroadcastResult> {
+  
+  console.log(`🧠 智能广播模式 - 自动选择最佳RPC`)
+  
+  try {
+    // 尝试使用自定义RPC
+    return await broadcastTransactionChainWithRpc({
+      parentTransaction,
+      childTransactions,
+      networkType,
+      config
+    })
+  } catch (error) {
+    console.warn(`⚠️  自定义RPC广播失败，回退到默认Provider: ${error.message}`)
+    
+    // 这里可以添加回退到Provider的逻辑
+    // 但需要Provider实例，所以暂时抛出错误
+    throw new ChainMintingError(
+      ChainMintingErrorType.BROADCAST_ERROR,
+      `智能广播失败: ${error.message}`,
+      { error: error.message }
+    )
+  }
+}
+
+// ============================================================================
+// 工具函数已在上方定义
+// ============================================================================

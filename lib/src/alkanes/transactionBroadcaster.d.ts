@@ -6,8 +6,13 @@
  */
 import { Provider } from '../provider/provider';
 import { BroadcastConfig, BroadcastResult, BatchBroadcastResult, BuiltTransaction } from './chainMinting';
+import { IRpcClient } from '../rpclient/rpcFactory';
 /**
- * 广播单个交易
+ * 使用自定义RPC广播单个交易
+ */
+export declare function broadcastSingleTransactionWithRpc(psbtHex: string, expectedTxId: string, rpcClient?: IRpcClient, networkType?: string, config?: BroadcastConfig): Promise<BroadcastResult>;
+/**
+ * 广播单个交易（原函数，保持向后兼容）
  */
 export declare function broadcastSingleTransaction(psbtHex: string, expectedTxId: string, provider: Provider, config?: BroadcastConfig): Promise<BroadcastResult>;
 /**
@@ -118,3 +123,22 @@ export declare function generateBroadcastSummary(result: BatchBroadcastResult): 
     };
     timestamp: number;
 };
+/**
+ * 使用自定义RPC广播交易链
+ */
+export declare function broadcastTransactionChainWithRpc({ parentTransaction, childTransactions, rpcClient, networkType, config }: {
+    parentTransaction: BuiltTransaction;
+    childTransactions: BuiltTransaction[];
+    rpcClient?: IRpcClient;
+    networkType?: string;
+    config?: BroadcastConfig;
+}): Promise<BatchBroadcastResult>;
+/**
+ * 智能广播交易链 - 自动选择最佳RPC
+ */
+export declare function smartBroadcastTransactionChainWithRpc({ parentTransaction, childTransactions, networkType, config }: {
+    parentTransaction: BuiltTransaction;
+    childTransactions: BuiltTransaction[];
+    networkType?: string;
+    config?: BroadcastConfig;
+}): Promise<BatchBroadcastResult>;

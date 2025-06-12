@@ -12,11 +12,11 @@ import { ChainMintingFeeCalculation, ChainMintingWallets, AlkaneContractId } fro
  */
 export declare const HARDCODED_TRANSACTION_SIZES: {
     /** 父交易vSize - 包含P2TR输入,P2WPKH中继输出,OP_RETURN,P2TR找零 */
-    readonly PARENT_TX_VSIZE: 185;
+    readonly PARENT_TX_VSIZE: 171;
     /** 普通子交易vSize (1-23) - P2WPKH输入,P2WPKH输出,OP_RETURN */
-    readonly CHILD_TX_VSIZE: 146.25;
+    readonly CHILD_TX_VSIZE: 138.5;
     /** 最后子交易vSize (24) - P2WPKH输入,P2TR输出,OP_RETURN */
-    readonly FINAL_CHILD_TX_VSIZE: 158.5;
+    readonly FINAL_CHILD_TX_VSIZE: 150.5;
 };
 /**
  * 执行精确费用计算

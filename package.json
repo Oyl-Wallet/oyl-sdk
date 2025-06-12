@@ -10,6 +10,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "typecheck": "tsc --noEmit",
     "dev": "tsc -w",
     "prettier": "prettier --write ./src.ts/**/*.ts",
     "test": "jest",
@@ -24,7 +25,9 @@
     "test-fees": "node lib/scripts/test-fee-rates.js",
     "check-clock-status": "npx ts-node scripts/check-clock-in-status.ts",
     "test-rbf-logic": "npx ts-node scripts/test-rbf-acceleration.ts",
-    "view-rbf-plan": "cat scripts/RBF_IMPLEMENTATION_PLAN.md"
+    "view-rbf-plan": "cat scripts/RBF_IMPLEMENTATION_PLAN.md",
+    "test-rpc": "npx ts-node src/cli/rpc-test.ts test",
+    "rpc-config": "npx ts-node src/cli/rpc-test.ts config"
   },
   "bin": {
     "oyl-cli": "./bin/cli.js",
