@@ -34,6 +34,115 @@ import {
   verifyExistingChain
 } from '../alkanes/transactionBuilder'
 import { formatVerificationResult, ChainExecutionStatus } from '../alkanes/chainVerification'
+import { ChainMintOrder, ChainMintOrderManager } from '../alkanes/chainMintOrder'
+// ============================================================================
+// 订单跟踪的子交易链执行函数
+// ============================================================================
+
+/**
+ * 执行子交易链并实时更新订单状态
+ */
+async function executeChildTransactionChainWithTracking({
+  parentTxId,
+  initialRelayAmount,
+  wallets,
+  contractId,
+  childCount,
+  childTxFee,
+  finalReceiverAddress,
+  provider,
+  broadcastConfig,
+  order,
+  orderManager
+}: {
+  parentTxId: string
+  initialRelayAmount: number
+  wallets: any
+  contractId: AlkaneContractId
+  childCount: number
+  childTxFee: number
+  finalReceiverAddress: string
+  provider: any
+  broadcastConfig: any
+  order?: ChainMintOrder | null
+  orderManager?: ChainMintOrderManager
+}) {
+  const completedTxs: any[] = []
+  let currentTxId = parentTxId
+  let currentOutputValue = initialRelayAmount
+
+  for (let i = 1; i <= childCount; i++) {
+    const isLastTransaction = (i === childCount)
+    
+    console.log(`📦 构建子交易 ${i}/${childCount}${isLastTransaction ? ' (最后)' : ''}`)
+    
+    try {
+      // 构建子交易
+      const { buildChildTransaction } = await import('../alkanes/transactionBuilder')
+      const childTx = await buildChildTransaction({
+        parentTxId: currentTxId,
+        parentOutputValue: currentOutputValue,
+        transactionIndex: i,
+        isLastTransaction,
+        finalReceiverAddress,
+        wallets,
+        contractId,
+        childTxFee,
+        provider
+      })
+      
+      // 广播子交易
+      const { broadcastSingleTransaction } = await import('../alkanes/transactionBroadcaster')
+      const broadcastResult = await broadcastSingleTransaction(
+        childTx.psbtHex,
+        childTx.expectedTxId,
+        provider,
+        broadcastConfig
+      )
+      
+      if (!broadcastResult.success) {
+        throw new Error(`子交易 ${i} 广播失败: ${broadcastResult.error}`)
+      }
+      
+      completedTxs.push({
+        ...childTx,
+        index: i,
+        isLast: isLastTransaction
+      })
+      
+      console.log(`✅ 子交易 ${i} 完成: ${childTx.expectedTxId}`)
+      
+      // 更新订单进度
+      if (order && orderManager) {
+        await orderManager.updateOrderProgress(order.id, {
+          completedChildTxs: i,
+          lastTxId: childTx.expectedTxId,
+          lastOutputAmount: childTx.outputValue
+        })
+      }
+      
+      // 检查是否为最后交易（通过输出金额判断）
+      if (childTx.outputValue <= 330) {
+        console.log(`🎉 检测到最后交易 (输出=${childTx.outputValue} sats)，提前结束`)
+        break
+      }
+      
+      // 为下一笔交易准备
+      currentTxId = childTx.expectedTxId
+      currentOutputValue = childTx.outputValue
+      
+      // 短暂延迟避免网络拥堵
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      
+    } catch (error) {
+      console.error(`💥 子交易 ${i} 失败: ${error.message}`)
+      throw error
+    }
+  }
+  
+  return completedTxs
+}
+
 /* @dev example call
   oyl alkane trace -params '{"txid":"e6561c7a8f80560c30a113c418bb56bde65694ac2b309a68549f35fdf2e785cb","vout":0}'
 
@@ -1300,6 +1409,11 @@ export const alkaneChainMint = new AlkanesCommand('chain-mint')
       console.log(`   ✅ Sufficient funds available`)
       console.log(``)
 
+      // 6. 准备订单管理器 (订单将在父交易成功后创建)
+      const { ChainMintOrderManager } = await import('../alkanes/chainMintOrder')
+      const orderManager = new ChainMintOrderManager()
+      let order: any = null
+
       // 7. Dry run模式
       if (options.dryRun) {
         console.log(`🎯 DRY RUN COMPLETE - No transactions were executed`)
@@ -1335,61 +1449,102 @@ export const alkaneChainMint = new AlkanesCommand('chain-mint')
         checkAssetBalance: true
       }
 
-      if (options.enableVerification) {
-        // 使用完整的执行+验证流程
-        console.log(`📦 执行模式: 完整验证 (包含链上验证和资产查询)`)
-        console.log(`   验证超时: ${options.verificationTimeout} 分钟`)
+      // 8. 执行 Chain-Mint 并跟踪订单状态
+      try {
+        if (options.enableVerification) {
+          // 使用完整的执行+验证流程
+          console.log(`📦 执行模式: 完整验证 (包含链上验证和资产查询)`)
+          console.log(`   验证超时: ${options.verificationTimeout} 分钟`)
+          
+          const result = await executeCompleteChainMinting({
+            wallets,
+            contractId,
+            feeCalculation,
+            provider,
+            utxos: accountPortfolio.accountUtxos,
+            broadcastConfig,
+            finalReceiverAddress: options.receiver,
+            childCount,
+            verificationConfig
+          })
+
+          console.log(`\n🎉 PROJECT SNOWBALL 完整执行完成！`)
+          console.log(formatVerificationResult(result.verificationResult))
+
+        } else {
+          // 使用传统的执行流程（不验证）+ 订单跟踪
+          console.log(`📦 执行模式: 标准执行 (不包含验证)`)
+          
+          // Step 1: 构建、签名、广播父交易
+          console.log(`\n📦 Step 1: 处理父交易`)
+          const parentTx = await buildSignAndBroadcastParentTransaction({
+            wallets,
+            contractId,
+            feeCalculation,
+            provider,
+            utxos: accountPortfolio.accountUtxos,
+            broadcastConfig
+          })
+          
+          console.log(`✅ 父交易完成: ${parentTx.expectedTxId}`)
+          
+          // 创建订单记录 (只有父交易成功后才创建，避免无意义的记录)
+          console.log(`📝 创建订单记录...`)
+          order = await orderManager.createOrder({
+            contractId,
+            finalReceiverAddress: options.receiver,
+            network: options.provider,
+            relayWalletIndex: wallets.relayWalletIndex,
+            relayAddress: wallets.relayWallet.account.nativeSegwit.address,
+            feeRate: feeRate,
+            childCount: childCount,
+            broadcastConfig: broadcastConfig,
+            verificationConfig: options.enableVerification ? {
+              enabled: true,
+              ...verificationConfig
+            } : undefined
+          })
+          
+          // 立即更新父交易ID
+          await orderManager.updateOrderProgress(order.id, {
+            parentTxId: parentTx.expectedTxId
+          })
+          
+          console.log(`✅ 订单已创建: ${order.id}`)
+
+          // Step 2: 串行执行子交易链 + 订单跟踪
+          console.log(`\n📦 Step 2: 开始串行子交易链`)
+          const childTxs = await executeChildTransactionChainWithTracking({
+            parentTxId: parentTx.expectedTxId,
+            initialRelayAmount: feeCalculation.relayFuelAmount,
+            wallets,
+            contractId,
+            childCount,
+            childTxFee: feeCalculation.childTx.totalFee,
+            finalReceiverAddress: options.receiver,
+            provider,
+            broadcastConfig,
+            order,
+            orderManager
+          })
+
+          console.log(`\n🎉 PROJECT SNOWBALL 执行完成！`)
+          console.log(`   父交易: ${parentTx.expectedTxId}`)
+          console.log(`   子交易数量: ${childTxs.length}`)
+          console.log(`   最终输出: ${childTxs[childTxs.length - 1]?.outputValue || 0} sats`)
+        }
         
-        const result = await executeCompleteChainMinting({
-          wallets,
-          contractId,
-          feeCalculation,
-          provider,
-          utxos: accountPortfolio.accountUtxos,
-          broadcastConfig,
-          finalReceiverAddress: options.receiver,
-          childCount,
-          verificationConfig
-        })
-
-        console.log(`\n🎉 PROJECT SNOWBALL 完整执行完成！`)
-        console.log(formatVerificationResult(result.verificationResult))
-
-      } else {
-        // 使用传统的执行流程（不验证）
-        console.log(`📦 执行模式: 标准执行 (不包含验证)`)
+        // 标记订单完成
+        if (order) {
+          await orderManager.markOrderAsCompleted(order.id)
+        }
         
-        // Step 1: 构建、签名、广播父交易
-        console.log(`\n📦 Step 1: 处理父交易`)
-        const parentTx = await buildSignAndBroadcastParentTransaction({
-          wallets,
-          contractId,
-          feeCalculation,
-          provider,
-          utxos: accountPortfolio.accountUtxos,
-          broadcastConfig
-        })
-        
-        console.log(`✅ 父交易完成: ${parentTx.expectedTxId}`)
-
-        // Step 2: 串行执行子交易链
-        console.log(`\n📦 Step 2: 开始串行子交易链`)
-        const childTxs = await buildAndBroadcastChildTransactionChain({
-          parentTxId: parentTx.expectedTxId,
-          initialRelayAmount: feeCalculation.relayFuelAmount,
-          wallets,
-          contractId,
-          childCount,
-          childTxFee: feeCalculation.childTx.totalFee,
-          finalReceiverAddress: options.receiver,
-          provider,
-          broadcastConfig
-        })
-
-        console.log(`\n🎉 PROJECT SNOWBALL 执行完成！`)
-        console.log(`   父交易: ${parentTx.expectedTxId}`)
-        console.log(`   子交易数量: ${childTxs.length}`)
-        console.log(`   最终输出: ${childTxs[childTxs.length - 1]?.outputValue || 0} sats`)
+      } catch (error) {
+        // 处理执行过程中的中断
+        if (order) {
+          await orderManager.markOrderAsInterrupted(order.id, error.message)
+        }
+        throw error
       }
 
     } catch (error) {

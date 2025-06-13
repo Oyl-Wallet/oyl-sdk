@@ -20,6 +20,10 @@ import {
   alkaneChainMint,
   alkaneVerifyChain,
 } from './alkane'
+import {
+  chainMintStatus,
+  chainMintResume,
+} from './chainMintOrder'
 import { init, genBlocks, sendFromFaucet } from './regtest'
 import { runeSend, runeMint, runeEtchCommit, runeEtchReveal, runeBalance } from './rune'
 import { brc20Send } from './brc20'
@@ -114,6 +118,8 @@ const alkaneCommand = new Command('alkane')
   .addCommand(alkaneEstimateFee)
   .addCommand(alkaneChainMint)
   .addCommand(alkaneVerifyChain)
+  .addCommand(chainMintStatus)
+  .addCommand(chainMintResume)
   
   
 const providerCommand = new Command('provider')
