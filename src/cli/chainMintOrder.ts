@@ -3,7 +3,12 @@
  */
 
 import { Command } from 'commander'
-import { ChainMintOrderManager, OrderStatus } from '../alkanes/chainMintOrder'
+import { 
+  ChainMintOrderManager, 
+  OrderStatus, 
+  OrderExecutionMode,
+  SliceStatus 
+} from '../alkanes/chainMintOrder'
 import { generateChainMintingWalletsFromEnv } from '../alkanes/chainMinting'
 import { Wallet } from './wallet'
 
@@ -31,8 +36,10 @@ export const chainMintStatus = new Command('chain-mint-status')
       // 显示统计信息
       console.log(`📊 统计信息:`)
       console.log(`   📦 总计: ${overview.total}`)
-      console.log(`   ⚡ 执行中: ${overview.executing}`)
+      console.log(`   ⚡ 执行中: ${overview.executing} (Snowball)`)
+      console.log(`   🔀 并行执行: ${overview.parallelExecuting} (Supercluster)`)
       console.log(`   ⏸️  中断: ${overview.interrupted}`)
+      console.log(`   🔶 部分完成: ${overview.partialCompleted}`)
       console.log(`   ✅ 完成: ${overview.completed}`)
       console.log(`   💥 恢复失败: ${overview.recoveryFailed}`)
       console.log(``)
@@ -55,21 +62,44 @@ export const chainMintStatus = new Command('chain-mint-status')
       
       ordersToShow.forEach((order, index) => {
         const statusEmoji = getStatusEmoji(order.status)
-        const progress = order.progress.completedChildTxs
         const duration = Math.round((Date.now() - order.createdAt) / 1000)
+        const executionModeText = order.executionMode === OrderExecutionMode.SUPERCLUSTER ? 
+          'Project Supercluster' : 'Project Snowball'
         
         console.log(`${index + 1}. ${order.id}`)
         console.log(`   ├─ 状态: ${statusEmoji} ${order.status}`)
+        console.log(`   ├─ 模式: ${executionModeText}`)
         console.log(`   ├─ 合约: ${order.contractId.block}:${order.contractId.tx}`)
         console.log(`   ├─ 接收地址: ${order.finalReceiverAddress}`)
         console.log(`   ├─ 网络: ${order.network}`)
-        console.log(`   ├─ 中继地址: ${order.relayAddress}`)
-        console.log(`   ├─ 进度: ${progress}/24`)
+        
+        // 显示不同模式的进度信息
+        if (order.executionMode === OrderExecutionMode.SUPERCLUSTER) {
+          console.log(`   ├─ 总铸造量: ${order.executionParams.totalMints || 'N/A'} tokens`)
+          console.log(`   ├─ 分片进度: ${order.progress.completedSlices || 0}/${order.progress.totalSlices || 0}`)
+          
+          // 显示分片详情
+          if (order.progress.slices && order.progress.slices.length > 0) {
+            const completedSlices = order.progress.slices.filter(s => s.status === SliceStatus.COMPLETED).length
+            const failedSlices = order.progress.slices.filter(s => s.status === SliceStatus.FAILED).length
+            const executingSlices = order.progress.slices.filter(s => s.status === SliceStatus.EXECUTING).length
+            const pendingSlices = order.progress.slices.filter(s => s.status === SliceStatus.PENDING).length
+            
+            console.log(`   ├─ 分片状态: ✅${completedSlices} ❌${failedSlices} ⚡${executingSlices} ⏳${pendingSlices}`)
+          }
+        } else {
+          console.log(`   ├─ 中继地址: ${order.relayAddress}`)
+          console.log(`   ├─ 进度: ${order.progress.completedChildTxs}/${order.executionParams.childCount || 24}`)
+        }
+        
         console.log(`   ├─ 创建时间: ${new Date(order.createdAt).toLocaleString()}`)
         console.log(`   └─ 运行时间: ${duration} 秒`)
         
         if (order.interruptInfo) {
           console.log(`   🔍 中断原因: ${order.interruptInfo.reason}`)
+          if (order.interruptInfo.failedSlices && order.interruptInfo.failedSlices.length > 0) {
+            console.log(`   💥 失败分片: ${order.interruptInfo.failedSlices.join(', ')}`)
+          }
         }
         
         if (order.recoveryInfo && order.recoveryInfo.attempts > 0) {
@@ -83,10 +113,13 @@ export const chainMintStatus = new Command('chain-mint-status')
       })
       
       // 显示恢复提示
-      if (overview.interrupted > 0) {
+      if (overview.interrupted > 0 || overview.partialCompleted > 0) {
         console.log(`💡 恢复中断的订单:`)
         console.log(`   单个恢复: oyl alkane chain-mint-resume --order-id <ORDER_ID>`)
         console.log(`   批量恢复: oyl alkane chain-mint-resume --all`)
+        if (overview.partialCompleted > 0) {
+          console.log(`   重置失败分片: oyl alkane chain-mint-resume --order-id <ORDER_ID> --reset-failed`)
+        }
       }
       
     } catch (error) {
@@ -100,10 +133,12 @@ export const chainMintStatus = new Command('chain-mint-status')
 // ============================================================================
 
 export const chainMintResume = new Command('chain-mint-resume')
-  .description('恢复中断的 Chain-Mint 订单')
+  .description('恢复中断的 Chain-Mint 订单 (支持Snowball和Supercluster模式)')
   .option('--order-id <id>', '要恢复的订单ID')
   .option('--all', '恢复所有中断的订单')
   .option('--force', '强制重试，即使已达到最大重试次数')
+  .option('--reset-failed', '重置失败的分片状态为待执行 (仅Supercluster模式)')
+  .option('--slice-indices <indices>', '指定要重置的分片索引，逗号分隔 (配合--reset-failed)')
   .option('--fee-rate <rate>', '费率 (sat/vB) - 仅用于没有保存执行参数的老订单')
   .option('--child-count <count>', '子交易数量 - 仅用于没有保存执行参数的老订单')
   .action(async (options) => {
@@ -118,6 +153,21 @@ export const chainMintResume = new Command('chain-mint-resume')
       const fallbackParams = {
         feeRate: options.feeRate ? parseFloat(options.feeRate) : undefined,
         childCount: options.childCount ? parseInt(options.childCount) : undefined
+      }
+      
+      // 处理重置失败分片的特殊逻辑
+      if (options.resetFailed) {
+        if (!options.orderId) {
+          console.error('❌ --reset-failed 需要配合 --order-id 使用')
+          process.exit(1)
+        }
+        
+        const sliceIndices = options.sliceIndices ? 
+          options.sliceIndices.split(',').map((i: string) => parseInt(i.trim())) : 
+          undefined
+        
+        await resetFailedSlicesAndResume(orderManager, options.orderId, sliceIndices, options.force, fallbackParams)
+        return
       }
       
       if (options.all) {
@@ -139,7 +189,90 @@ export const chainMintResume = new Command('chain-mint-resume')
 // ============================================================================
 
 /**
- * 恢复单个订单
+ * 重置失败分片并恢复执行 (Project Supercluster)
+ */
+async function resetFailedSlicesAndResume(
+  orderManager: ChainMintOrderManager, 
+  orderId: string, 
+  sliceIndices?: number[], 
+  force: boolean = false, 
+  fallbackParams?: { feeRate?: number, childCount?: number }
+) {
+  console.log(`\n🔄 重置失败分片并恢复: ${orderId}`)
+  console.log(`========================\n`)
+  
+  // 1. 加载订单信息
+  const order = await orderManager.loadOrder(orderId)
+  if (!order) {
+    console.error(`❌ 订单不存在: ${orderId}`)
+    return
+  }
+  
+  if (order.executionMode !== OrderExecutionMode.SUPERCLUSTER) {
+    console.error(`❌ 只有Project Supercluster订单才支持分片重置`)
+    return
+  }
+  
+  if (!order.progress.slices) {
+    console.error(`❌ 订单分片状态未初始化`)
+    return
+  }
+  
+  // 2. 显示当前分片状态
+  console.log(`📋 当前分片状态:`)
+  order.progress.slices.forEach((slice, index) => {
+    const statusEmoji = slice.status === SliceStatus.COMPLETED ? '✅' :
+                       slice.status === SliceStatus.FAILED ? '❌' :
+                       slice.status === SliceStatus.EXECUTING ? '⚡' : '⏳'
+    console.log(`   分片${slice.sliceIndex}: ${statusEmoji} ${slice.status} (${slice.completedChildTxs}/${slice.mintCount} tokens)`)
+    if (slice.error) {
+      console.log(`     错误: ${slice.error.message}`)
+    }
+  })
+  console.log(``)
+  
+  // 3. 重置失败的分片
+  await orderManager.resetFailedSlices(orderId, sliceIndices)
+  
+  // 4. 恢复执行
+  console.log(`🚀 开始恢复并行执行...`)
+  await resumeSuperclusterOrder(orderManager, orderId, force, fallbackParams)
+}
+
+/**
+ * 恢复Project Supercluster订单
+ */
+async function resumeSuperclusterOrder(
+  orderManager: ChainMintOrderManager,
+  orderId: string,
+  force: boolean = false,
+  fallbackParams?: { feeRate?: number, childCount?: number }
+) {
+  const order = await orderManager.loadOrder(orderId)
+  if (!order) {
+    throw new Error(`订单不存在: ${orderId}`)
+  }
+  
+  console.log(`🔀 Project Supercluster 订单恢复 (暂未完全实现)`)
+  console.log(`   总分片: ${order.progress.totalSlices}`)
+  console.log(`   已完成: ${order.progress.completedSlices}`)
+  
+  // TODO: 这里需要调用Project Supercluster的恢复逻辑
+  // 目前先显示提示信息
+  console.log(`⚠️  Project Supercluster 恢复功能正在开发中`)
+  console.log(`   建议手动检查分片状态并重新执行未完成的分片`)
+  
+  const recoverableSlices = await orderManager.getRecoverableSlices(orderId)
+  if (recoverableSlices.length > 0) {
+    console.log(`\n📋 可恢复的分片:`)
+    recoverableSlices.forEach(slice => {
+      console.log(`   分片${slice.sliceIndex}: ${slice.status} (${slice.relayAddress})`)
+    })
+  }
+}
+
+/**
+ * 恢复单个订单 (支持两种模式)
  */
 async function resumeSingleOrder(orderManager: ChainMintOrderManager, orderId: string, force: boolean = false, fallbackParams?: { feeRate?: number, childCount?: number }) {
   console.log(`\n🔄 恢复订单: ${orderId}`)
@@ -151,6 +284,14 @@ async function resumeSingleOrder(orderManager: ChainMintOrderManager, orderId: s
     console.error(`❌ 订单不存在: ${orderId}`)
     return
   }
+  
+  // 2. 根据执行模式路由到不同的恢复逻辑
+  if (order.executionMode === OrderExecutionMode.SUPERCLUSTER) {
+    await resumeSuperclusterOrder(orderManager, orderId, force, fallbackParams)
+    return
+  }
+  
+  // 3. Project Snowball 恢复逻辑 (原有逻辑)
   
   if (order.status === OrderStatus.COMPLETED) {
     console.log(`✅ 订单已完成，无需恢复`)
@@ -551,8 +692,12 @@ function getStatusEmoji(status: OrderStatus): string {
   switch (status) {
     case OrderStatus.EXECUTING:
       return '⚡'
+    case OrderStatus.PARALLEL_EXECUTING:
+      return '🔀'
     case OrderStatus.INTERRUPTED:
       return '⏸️'
+    case OrderStatus.PARTIAL_COMPLETED:
+      return '🔶'
     case OrderStatus.COMPLETED:
       return '✅'
     case OrderStatus.RECOVERY_FAILED:
