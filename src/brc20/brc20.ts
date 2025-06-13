@@ -8,6 +8,7 @@ import {
   formatInputsToSign,
   getFee,
   getOutputValueByVOutIndex,
+  inscriptionSats,
   tweakSigner,
   waitForTransaction,
 } from '../shared/utils'
@@ -51,7 +52,7 @@ export const transferEstimate = async ({
 
     gatheredUtxos = findXAmountOfSats(
       originalGatheredUtxos.utxos,
-      Number(finalFee) + 546
+      Number(finalFee) + inscriptionSats
     )
 
     if (!fee && gatheredUtxos.utxos.length > 1) {
@@ -64,11 +65,11 @@ export const transferEstimate = async ({
       finalFee = Math.max(txSize * feeRate, 250)
       gatheredUtxos = findXAmountOfSats(
         originalGatheredUtxos.utxos,
-        Number(finalFee) + 546
+        Number(finalFee) + inscriptionSats
       )
     }
 
-    if (gatheredUtxos.totalAmount < finalFee + 546) {
+    if (gatheredUtxos.totalAmount < finalFee + inscriptionSats) {
       throw new OylTransactionError(Error('Insufficient Balance'))
     }
 
@@ -122,10 +123,10 @@ export const transferEstimate = async ({
 
     psbt.addOutput({
       address: toAddress,
-      value: 546,
+      value: inscriptionSats,
     })
 
-    const changeAmount = gatheredUtxos.totalAmount - (finalFee + 546)
+    const changeAmount = gatheredUtxos.totalAmount - (finalFee + inscriptionSats)
 
     psbt.addOutput({
       address: account[account.spendStrategy.changeAddress].address,
@@ -182,9 +183,9 @@ export const commit = async ({
     const feeForReveal =
       revealTxSize * feeRate < 250 ? 250 : revealTxSize * feeRate
 
-    const baseEstimate = Number(feeForCommit) + Number(feeForReveal) + 546
+    const baseEstimate = Number(feeForCommit) + Number(feeForReveal) + inscriptionSats
 
-    let finalFee = fee ? fee + Number(feeForReveal) + 546 : baseEstimate
+    let finalFee = fee ? fee + Number(feeForReveal) + inscriptionSats : baseEstimate
 
     const script = createInscriptionScript(tweakedTaprootPublicKey, content)
 
@@ -197,7 +198,7 @@ export const commit = async ({
     })
 
     psbt.addOutput({
-      value: Number(feeForReveal) + 546,
+      value: Number(feeForReveal) + inscriptionSats,
       address: inscriberInfo.address,
     })
 
@@ -215,7 +216,7 @@ export const commit = async ({
       finalFee =
         txSize * feeRate < 250
           ? 250
-          : txSize * feeRate + Number(feeForReveal) + 546
+          : txSize * feeRate + Number(feeForReveal) + inscriptionSats
 
       gatheredUtxos = findXAmountOfSats(
         originalGatheredUtxos.utxos,
@@ -323,7 +324,7 @@ export const reveal = async ({
       outputCount: 2,
     })
 
-    const revealTxBaseFee = minFee * feeRate < 546 ? 546 : minFee * feeRate
+    const revealTxBaseFee = minFee * feeRate < inscriptionSats ? inscriptionSats : minFee * feeRate
     const revealTxChange = fee === 0 ? 0 : Number(revealTxBaseFee) - fee
 
     const commitTxOutput = await getOutputValueByVOutIndex({
@@ -362,10 +363,10 @@ export const reveal = async ({
     })
 
     psbt.addOutput({
-      value: 546,
+      value: inscriptionSats,
       address: receiverAddress,
     })
-    if (revealTxChange > 546) {
+    if (revealTxChange > inscriptionSats) {
       psbt.addOutput({
         value: revealTxChange,
         address: receiverAddress,
@@ -425,7 +426,7 @@ export const transfer = async ({
       index: 0,
       witnessUtxo: {
         script: Buffer.from(revealInfo.result.vout[0].scriptpubkey, 'hex'),
-        value: 546,
+        value: inscriptionSats,
       },
     })
 
@@ -492,7 +493,7 @@ export const transfer = async ({
 
     psbt.addOutput({
       address: toAddress,
-      value: 546,
+      value: inscriptionSats,
     })
 
     psbt.addOutput({

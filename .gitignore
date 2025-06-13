@@ -11,3 +11,5 @@ yarn-error.log
 package-lock.json
 memory-bank/activeContext.md
 memory-bank/progress.md
+logs/
+chain-mint-orders/

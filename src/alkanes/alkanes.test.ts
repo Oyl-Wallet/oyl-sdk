@@ -6,6 +6,7 @@ import { encipher } from 'alkanes/lib/bytes'
 import { encodeRunestoneProtostone } from 'alkanes/lib/protorune/proto_runestone_upgrade'
 import { ProtoStone } from 'alkanes/lib/protorune/protostone'
 import { FormattedUtxo } from '../utxo'
+import { Signer } from '../signer'
 
 // Test setup
 const provider = new Provider({
@@ -65,6 +66,7 @@ jest.mock('alkanes/lib/protorune/proto_runestone_upgrade', () => ({
 }))
 
 jest.mock('./alkanes', () => ({
+  ...jest.requireActual('./alkanes'),
   executePsbt: jest.fn().mockImplementation(async (options) => {
     if (
       !options.protostone ||
@@ -310,3 +312,4 @@ describe('Alkanes PSBT Tests', () => {
     })
   })
 })
+

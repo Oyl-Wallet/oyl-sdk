@@ -1,0 +1,45 @@
+# Systemd service file for auto-clock-in
+# Copy this file to /etc/systemd/system/ and modify paths as needed
+#
+# Installation:
+# 1. sudo cp scripts/auto-clock-in.service /etc/systemd/system/
+# 2. Edit the file and update User, WorkingDirectory, and ExecStart paths
+# 3. sudo systemctl daemon-reload
+# 4. sudo systemctl enable auto-clock-in
+# 5. sudo systemctl start auto-clock-in
+
+[Unit]
+Description=Auto Clock-In Service for OYL SDK
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=oyl
+Group=oyl
+WorkingDirectory=/path/to/oyl-sdk
+ExecStart=/usr/bin/node lib/scripts/auto-clock-in.js
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=10
+StartLimitInterval=60
+StartLimitBurst=3
+
+# Environment
+Environment=NODE_ENV=production
+EnvironmentFile=-/path/to/oyl-sdk/.env
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/path/to/oyl-sdk/logs
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=auto-clock-in
+
+[Install]
+WantedBy=multi-user.target

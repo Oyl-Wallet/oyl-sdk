@@ -29,13 +29,13 @@ describe('Account Tests', () => {
     })
 
     expect(account.spendStrategy.addressOrder).toEqual([
+      'taproot',
       'nativeSegwit',
       'nestedSegwit',
       'legacy',
-      'taproot',
     ])
     expect(account.spendStrategy.utxoSortGreatestToLeast).toBe(true)
-    expect(account.spendStrategy.changeAddress).toBe('nativeSegwit')
+    expect(account.spendStrategy.changeAddress).toBe('taproot')
   })
 
   it('mnemonicToAccount should generate the right custom spend strategy', () => {

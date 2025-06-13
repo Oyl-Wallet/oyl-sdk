@@ -8,7 +8,7 @@ import {
   ProtoStone,
 } from 'alkanes/lib/index'
 import { ProtoruneEdict } from 'alkanes/lib/protorune/protoruneedict'
-import { Account, AlkaneId, Signer } from '..'
+import { Account, AlkaneId, Signer, mnemonicToAccount, getWalletPrivateKeys } from '..'
 import {
   findXAmountOfSats,
   formatInputsToSign,
@@ -24,7 +24,7 @@ import { getAddressType } from '../shared/utils'
 import { toXOnly } from 'bitcoinjs-lib/src/psbt/bip371'
 import { LEAF_VERSION_TAPSCRIPT } from 'bitcoinjs-lib/src/payments/bip341'
 import { actualDeployCommitFee } from './contract'
-import { selectSpendableUtxos, type FormattedUtxo } from '../utxo'
+import { selectSpendableUtxos, accountUtxos, type FormattedUtxo } from '../utxo'
 
 export interface ProtostoneMessage {
   protocolTag?: bigint
@@ -64,6 +64,9 @@ export const createExecutePsbt = async ({
   provider,
   feeRate,
   fee = 0,
+  alkaneReceiverAddress,
+  enableRBF = false,
+  noChange = false,
 }: {
   alkanesUtxos?: FormattedUtxo[]
   frontendFee?: bigint
@@ -74,6 +77,9 @@ export const createExecutePsbt = async ({
   provider: Provider
   feeRate?: number
   fee?: number
+  alkaneReceiverAddress?: string
+  enableRBF?: boolean
+  noChange?: boolean
 }) => {
   try {
     const SAT_PER_VBYTE = feeRate ?? 1
@@ -86,15 +92,15 @@ export const createExecutePsbt = async ({
     const feeSatEffective: bigint =
       frontendFee && frontendFee >= MIN_RELAY ? frontendFee : 0n
 
-    const spendTargets = 546 + Number(feeSatEffective)
+    const spendTargets = inscriptionSats + Number(feeSatEffective)
 
     const minTxSize = minimumFee({
-      taprootInputCount: 2,
+      taprootInputCount: 1,
       nonTaprootInputCount: 0,
       outputCount: 2 + (feeSatEffective > 0n ? 1 : 0),
     })
 
-    const minFee = Math.max(minTxSize * SAT_PER_VBYTE, 250)
+    const minFee = minTxSize * SAT_PER_VBYTE
     let minerFee = fee === 0 ? minFee : fee
 
     let gatheredUtxos = {
@@ -111,7 +117,7 @@ export const createExecutePsbt = async ({
         nonTaprootInputCount: 0,
         outputCount: 2 + (feeSatEffective > 0n ? 1 : 0),
       })
-      minerFee = Math.max(newSize * SAT_PER_VBYTE, 250)
+      minerFee = newSize * SAT_PER_VBYTE
       if (gatheredUtxos.totalAmount < minerFee) {
         throw new OylTransactionError(Error('Insufficient balance'))
       }
@@ -121,14 +127,17 @@ export const createExecutePsbt = async ({
 
     if (alkanesUtxos) {
       for (const utxo of alkanesUtxos) {
-        await addInputForUtxo(psbt, utxo, account, provider)
+        await addInputForUtxo(psbt, utxo, account, provider, enableRBF)
       }
     }
     for (const utxo of gatheredUtxos.utxos) {
-      await addInputForUtxo(psbt, utxo, account, provider)
+      await addInputForUtxo(psbt, utxo, account, provider, enableRBF)
     }
 
-    psbt.addOutput({ address: account.taproot.address, value: 546 })
+    psbt.addOutput({ 
+      address: alkaneReceiverAddress || account.taproot.address, 
+      value: inscriptionSats 
+    })
     psbt.addOutput({ script: protostone, value: 0 })
 
     if (feeSatEffective > 0n) {
@@ -145,10 +154,10 @@ export const createExecutePsbt = async ({
     const inputsTotal = gatheredUtxos.totalAmount + (totalAlkanesAmount ?? 0)
     const outputsTotal = psbt.txOutputs.reduce((sum, o) => sum + o.value, 0)
 
-    let change = inputsTotal - outputsTotal - minerFee
+    let change = inputsTotal - outputsTotal - minerFee + 14
     if (change < 0) throw new OylTransactionError(Error('Insufficient balance'))
 
-    if (change >= Number(MIN_RELAY)) {
+    if (noChange !== true && change >= Number(MIN_RELAY)) {
       psbt.addOutput({
         address: account[account.spendStrategy.changeAddress].address,
         value: change,
@@ -177,8 +186,12 @@ async function addInputForUtxo(
   psbt: bitcoin.Psbt,
   utxo: FormattedUtxo,
   account: Account,
-  provider: Provider
+  provider: Provider,
+  enableRBF: boolean = false
 ) {
+  // Set sequence for RBF: 0xfffffffd enables RBF, 0xffffffff disables it
+  const sequence = enableRBF ? 0xfffffffd : 0xffffffff
+  
   const type = getAddressType(utxo.address)
   switch (type) {
     case 0: {
@@ -188,6 +201,7 @@ async function addInputForUtxo(
         hash: utxo.txId,
         index: +utxo.outputIndex,
         nonWitnessUtxo: Buffer.from(prevHex, 'hex'),
+        sequence: sequence,
       })
       break
     }
@@ -201,6 +215,7 @@ async function addInputForUtxo(
         hash: utxo.txId,
         index: +utxo.outputIndex,
         redeemScript: redeem,
+        sequence: sequence,
         witnessUtxo: {
           value: utxo.satoshis,
           script: bitcoin.script.compile([
@@ -218,6 +233,7 @@ async function addInputForUtxo(
       psbt.addInput({
         hash: utxo.txId,
         index: +utxo.outputIndex,
+        sequence: sequence,
         witnessUtxo: {
           value: utxo.satoshis,
           script: Buffer.from(utxo.scriptPk, 'hex'),
@@ -349,7 +365,7 @@ export const createDeployCommitPsbt = async ({
     }
 
     psbt.addOutput({
-      value: finalFee + wasmDeploySize + 546,
+      value: finalFee + wasmDeploySize + inscriptionSats,
       address: inscriberInfo.address,
     })
 
@@ -499,7 +515,7 @@ export const createDeployRevealPsbt = async ({
     })
 
     psbt.addOutput({
-      value: 546,
+      value: inscriptionSats,
       address: receiverAddress,
     })
 
@@ -508,7 +524,7 @@ export const createDeployRevealPsbt = async ({
       script: protostone,
     })
 
-    if (revealTxChange > 546) {
+    if (revealTxChange > inscriptionSats) {
       psbt.addOutput({
         value: revealTxChange,
         address: receiverAddress,
@@ -653,6 +669,8 @@ export const actualExecuteFee = async ({
   feeRate,
   frontendFee,
   feeAddress,
+  alkaneReceiverAddress,
+  noChange = false,
 }: {
   alkanesUtxos?: FormattedUtxo[]
   utxos: FormattedUtxo[]
@@ -662,6 +680,8 @@ export const actualExecuteFee = async ({
   feeRate: number
   frontendFee?: bigint
   feeAddress?: string
+  alkaneReceiverAddress?: string
+  noChange?: boolean
 }) => {
   const { psbt } = await createExecutePsbt({
     alkanesUtxos,
@@ -672,6 +692,9 @@ export const actualExecuteFee = async ({
     protostone,
     provider,
     feeRate,
+    alkaneReceiverAddress,
+    enableRBF: false,
+    noChange,
   })
 
   const { fee: estimatedFee } = await getEstimatedFee({
@@ -690,6 +713,9 @@ export const actualExecuteFee = async ({
     provider,
     feeRate,
     fee: estimatedFee,
+    alkaneReceiverAddress,
+    enableRBF: false,
+    noChange,
   })
 
   const { fee: finalFee, vsize } = await getEstimatedFee({
@@ -710,6 +736,7 @@ export const executePsbt = async ({
   feeRate,
   frontendFee,
   feeAddress,
+  alkaneReceiverAddress,
 }: {
   alkanesUtxos?: FormattedUtxo[]
   utxos: FormattedUtxo[]
@@ -719,6 +746,7 @@ export const executePsbt = async ({
   feeRate?: number
   frontendFee?: bigint
   feeAddress?: string
+  alkaneReceiverAddress?: string
 }) => {
   const { fee } = await actualExecuteFee({
     alkanesUtxos,
@@ -729,6 +757,7 @@ export const executePsbt = async ({
     protostone,
     provider,
     feeRate,
+    alkaneReceiverAddress,
   })
 
   const { psbt: finalPsbt } = await createExecutePsbt({
@@ -741,6 +770,8 @@ export const executePsbt = async ({
     provider,
     feeRate,
     fee,
+    alkaneReceiverAddress,
+    enableRBF: false,
   })
 
   return { psbt: finalPsbt, fee }
@@ -756,6 +787,9 @@ export const execute = async ({
   signer,
   frontendFee,
   feeAddress,
+  alkaneReceiverAddress,
+  enableRBF = false,
+  noChange = false,
 }: {
   alkanesUtxos?: FormattedUtxo[]
   utxos: FormattedUtxo[]
@@ -766,6 +800,9 @@ export const execute = async ({
   signer: Signer
   frontendFee?: bigint
   feeAddress?: string
+  alkaneReceiverAddress?: string
+  enableRBF?: boolean
+  noChange?: boolean
 }) => {
   const { fee } = await actualExecuteFee({
     alkanesUtxos,
@@ -776,6 +813,8 @@ export const execute = async ({
     protostone,
     provider,
     feeRate,
+    alkaneReceiverAddress,
+    noChange,
   })
 
   const { psbt: finalPsbt } = await createExecutePsbt({
@@ -788,6 +827,9 @@ export const execute = async ({
     provider,
     feeRate,
     fee,
+    alkaneReceiverAddress,
+    enableRBF,
+    noChange,
   })
 
   const { signedPsbt } = await signer.signAllInputs({
@@ -872,7 +914,7 @@ export const createTransactReveal = async ({
     })
 
     psbt.addOutput({
-      value: 546,
+      value: inscriptionSats,
       address: receiverAddress,
     })
 
@@ -881,7 +923,7 @@ export const createTransactReveal = async ({
       script: protostone,
     })
 
-    if (revealTxChange > 546) {
+    if (revealTxChange > inscriptionSats) {
       psbt.addOutput({
         value: revealTxChange,
         address: receiverAddress,
@@ -899,3 +941,152 @@ export const createTransactReveal = async ({
 
 export const toTxId = (rawLeTxid: string) =>
   Buffer.from(rawLeTxid, 'hex').reverse().toString('hex')
+
+
+export const batchExecute = async ({
+  alkanesUtxos,
+  utxos,
+  account,
+  protostone,
+  provider,
+  feeRate,
+  signer,
+  frontendFee,
+  feeAddress,
+  accountCount,
+  mnemonic,
+  alkaneReceiverAddress,
+}: {
+  alkanesUtxos?: FormattedUtxo[]
+  utxos: FormattedUtxo[]
+  account: Account
+  protostone: Buffer
+  provider: Provider
+  feeRate?: number
+  signer: Signer
+  frontendFee?: bigint
+  feeAddress?: string
+  accountCount: number
+  mnemonic: string
+  alkaneReceiverAddress?: string
+}) => {
+  try {
+    if (accountCount < 1) {
+      throw new Error('Account count must be at least 1')
+    }
+
+    // Generate child accounts and their corresponding signers (excluding main account)
+    const accountsWithSigners: Array<{ account: Account; signer: Signer }> = []
+    
+    for (let i = 1; i <= accountCount; i++) {
+      const childAccount = mnemonicToAccount({
+        mnemonic,
+        opts: {
+          network: account.network,
+          index: i,
+          spendStrategy: account.spendStrategy,
+        },
+      })
+      
+      // Create a signer for this child account
+      const childPrivateKeys = getWalletPrivateKeys({
+        mnemonic,
+        opts: {
+          network: account.network,
+          index: i,
+        },
+      })
+      
+      const childSigner = new Signer(account.network, {
+        taprootPrivateKey: childPrivateKeys.taproot.privateKey,
+        segwitPrivateKey: childPrivateKeys.nativeSegwit.privateKey,
+        nestedSegwitPrivateKey: childPrivateKeys.nestedSegwit.privateKey,
+        legacyPrivateKey: childPrivateKeys.legacy.privateKey,
+      })
+      
+      accountsWithSigners.push({ account: childAccount, signer: childSigner })
+    }
+
+    // Execute with each account and its corresponding signer concurrently
+    const executePromises = accountsWithSigners.map(async ({ account: acc, signer: accSigner }, index) => {
+      try {
+        // Get UTXOs for this specific account instead of using shared UTXOs
+        const { accountUtxos: accUtxos } = await accountUtxos({
+          account: acc,
+          provider,
+        })
+        
+        const result = await execute({
+          alkanesUtxos,
+          utxos: accUtxos,
+          account: acc,
+          protostone,
+          provider,
+          feeRate,
+          signer: accSigner,
+          frontendFee,
+          feeAddress,
+          alkaneReceiverAddress,
+        })
+        return {
+          account: {
+            index: index + 1, // Child account index starts from 1
+            address: acc.taproot.address,
+          },
+          success: true,
+          result,
+        }
+      } catch (error) {
+        return {
+          account: {
+            index: index + 1, // Child account index starts from 1
+            address: acc.taproot.address,
+          },
+          success: false,
+          error: error.message,
+        }
+      }
+    })
+
+    const results = await Promise.allSettled(executePromises)
+
+    const executionResults = results.map((result, index) => {
+      if (result.status === 'fulfilled') {
+        return result.value
+      } else {
+        return {
+          account: {
+            index: index + 1, // Child account index starts from 1
+            address: accountsWithSigners[index].account.taproot.address,
+          },
+          success: false,
+          error: result.reason?.message || 'Unknown error',
+        }
+      }
+    })
+
+    const successfulExecutions = executionResults.filter((r) => r.success)
+    const failedExecutions = executionResults.filter((r) => !r.success)
+
+    return {
+      totalAccounts: accountCount,
+      successfulExecutions: successfulExecutions.length,
+      failedExecutions: failedExecutions.length,
+      results: executionResults,
+      summary: {
+        success: successfulExecutions.map((r) => ({
+          accountIndex: r.account.index,
+          address: r.account.address,
+          txId: r.result?.txId,
+        })),
+        failed: failedExecutions.map((r) => ({
+          accountIndex: r.account.index,
+          address: r.account.address,
+          error: r.error,
+        })),
+      },
+    }
+  } catch (error) {
+    throw new OylTransactionError(error)
+  }
+}
