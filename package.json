@@ -27,7 +27,9 @@
     "test-rbf-logic": "npx ts-node scripts/test-rbf-acceleration.ts",
     "view-rbf-plan": "cat scripts/RBF_IMPLEMENTATION_PLAN.md",
     "test-rpc": "npx ts-node src/cli/rpc-test.ts test",
-    "rpc-config": "npx ts-node src/cli/rpc-test.ts config"
+    "rpc-config": "npx ts-node src/cli/rpc-test.ts config",
+    "pow-alkane": "node lib/scripts/pow-alkane-miner.js",
+    "demo-pow-alkane": "node lib/scripts/demo-pow-alkane.js"
   },
   "bin": {
     "oyl-cli": "./bin/cli.js",
@@ -42,6 +44,7 @@
     "ws": "8.17.1"
   },
   "devDependencies": {
+    "@types/crypto-js": "4.2.2",
     "@types/jest": "29.5.14",
     "@types/node": "20.17.12",
     "@types/tiny-async-pool": "2.0.3",
@@ -69,6 +72,7 @@
     "change-case": "4.1.2",
     "commander": "12.1.0",
     "crypto": "1.0.1",
+    "crypto-js": "4.2.0",
     "dotenv": "16.3.1",
     "ecpair": "2.1.0",
     "fs-extra": "11.2.0",
