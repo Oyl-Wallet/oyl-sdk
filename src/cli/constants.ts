@@ -31,7 +31,7 @@ export const DEFAULT_PROVIDER = {
   }),
   signet: new Provider({
     url: 'https://signet.sandshrew.io',
-    projectId: process.env.SANDSHREW_PROJET_ID,
+    projectId: process.env.SANDSHREW_PROJECT_ID,
     version: 'v2',
     network: bitcoin.networks.testnet,
     networkType: 'testnet',
