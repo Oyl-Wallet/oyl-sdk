@@ -271,7 +271,7 @@ export const actualFee = async ({
 
   const finalFee = finalVsize * feeRate
 
-  return { fee: finalFee }
+  return { fee: finalFee, vsize: finalVsize }
 }
 
 export const minimumFee = ({

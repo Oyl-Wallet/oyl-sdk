@@ -41,6 +41,7 @@ export declare const actualFee: ({ utxos, toAddress, amount, feeRate, account, p
     signer: Signer;
 }) => Promise<{
     fee: number;
+    vsize: any;
 }>;
 export declare const minimumFee: ({ taprootInputCount, nonTaprootInputCount, outputCount, }: {
     taprootInputCount: number;
