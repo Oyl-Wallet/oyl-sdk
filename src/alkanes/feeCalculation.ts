@@ -26,8 +26,11 @@ import {
  * 硬编码的交易vSize - 基于实际构建和测试的结果
  */
 export const HARDCODED_TRANSACTION_SIZES = {
-  /** 父交易vSize - 包含P2TR输入,P2WPKH中继输出,OP_RETURN,P2TR找零 */
-  PARENT_TX_VSIZE: 171,
+  /** 基础父交易vSize - 包含P2TR输入,P2WPKH中继输出,OP_RETURN,P2TR找零 (单分片) */
+  PARENT_TX_VSIZE_BASE: 171,
+  
+  /** 每增加一个分片的父交易大小增量 */
+  PARENT_TX_VSIZE_PER_SLICE: 33,
   
   /** 普通子交易vSize (1-23) - P2WPKH输入,P2WPKH输出,OP_RETURN */
   CHILD_TX_VSIZE: 138.5,
@@ -35,6 +38,30 @@ export const HARDCODED_TRANSACTION_SIZES = {
   /** 最后子交易vSize (24) - P2WPKH输入,P2TR输出,OP_RETURN */
   FINAL_CHILD_TX_VSIZE: 150.5
 } as const
+
+/**
+ * 计算动态父交易vSize
+ * 根据分片数量动态计算父交易的虚拟大小
+ * 
+ * @param sliceCount 分片数量 (默认为1，适用于Project Snowball)
+ * @returns 父交易的vSize
+ */
+export function calculateParentTxVSize(sliceCount: number = 1): number {
+  if (sliceCount < 1) {
+    throw new Error(`分片数量必须大于等于1: ${sliceCount}`)
+  }
+  
+  // 基础大小 + 每个额外分片增加33
+  const vSize = HARDCODED_TRANSACTION_SIZES.PARENT_TX_VSIZE_BASE + 
+                (sliceCount - 1) * HARDCODED_TRANSACTION_SIZES.PARENT_TX_VSIZE_PER_SLICE
+  
+  return vSize
+}
+
+/**
+ * 为了向后兼容，保留原来的PARENT_TX_VSIZE常量 (单分片情况)
+ */
+export const PARENT_TX_VSIZE = HARDCODED_TRANSACTION_SIZES.PARENT_TX_VSIZE_BASE
 
 // ============================================================================
 // 主要费用计算函数
@@ -44,31 +71,37 @@ export const HARDCODED_TRANSACTION_SIZES = {
  * 执行精确费用计算
  * 
  * 使用硬编码的准确交易大小进行精确费用计算
+ * 支持动态父交易大小计算 (用于Project Supercluster)
  */
 export async function performDryRunFeeCalculation({
   wallets,
   contractId,
   childCount,
   feeRate,
-  provider
+  provider,
+  sliceCount = 1,
+  isCpfpSlice = false
 }: {
   wallets: ChainMintingWallets
   contractId: AlkaneContractId
   childCount: number
   feeRate: number
   provider: Provider
+  sliceCount?: number
+  isCpfpSlice?: boolean
 }): Promise<ChainMintingFeeCalculation> {
   
   try {
     // 参数保留用于API兼容性
     void wallets; void provider;
     
-    validateFeeCalculationParams(feeRate, childCount)
+    validateFeeCalculationParams(feeRate, childCount, isCpfpSlice)
     
-    console.log(`🧮 费用计算: ${contractId.block}:${contractId.tx}, ${childCount}笔, ${feeRate} sat/vB`)
+    console.log(`🧮 费用计算: ${contractId.block}:${contractId.tx}, ${childCount}笔, ${feeRate} sat/vB${sliceCount > 1 ? `, ${sliceCount}分片` : ''}`)
     
-    // 计算精确费用
-    const parentTotalFee = Math.ceil(HARDCODED_TRANSACTION_SIZES.PARENT_TX_VSIZE * feeRate)
+    // 计算动态父交易大小和费用
+    const parentTxVSize = calculateParentTxVSize(sliceCount)
+    const parentTotalFee = Math.ceil(parentTxVSize * feeRate)
     
     // 普通子交易费用 (1到childCount-1)
     const normalChildFee = Math.ceil(HARDCODED_TRANSACTION_SIZES.CHILD_TX_VSIZE * feeRate)
@@ -90,7 +123,7 @@ export async function performDryRunFeeCalculation({
     
     const result: ChainMintingFeeCalculation = {
       parentTx: {
-        vSize: HARDCODED_TRANSACTION_SIZES.PARENT_TX_VSIZE,
+        vSize: parentTxVSize,
         baseFee: parentTotalFee,
         totalFee: parentTotalFee,
         feeRate: feeRate
@@ -124,6 +157,7 @@ export async function performDryRunFeeCalculation({
  * 基于硬编码大小的精确费用计算
  * 
  * 使用硬编码的准确交易大小，与performDryRunFeeCalculation保持一致
+ * 支持动态父交易大小计算 (用于Project Supercluster)
  */
 export async function calculateActualTransactionFees({
   wallets,
@@ -131,7 +165,8 @@ export async function calculateActualTransactionFees({
   childCount,
   feeRate,
   provider,
-  actualUtxos
+  actualUtxos,
+  sliceCount = 1
 }: {
   wallets: ChainMintingWallets
   contractId: AlkaneContractId
@@ -139,6 +174,7 @@ export async function calculateActualTransactionFees({
   feeRate: number
   provider: Provider
   actualUtxos: FormattedUtxo[]
+  sliceCount?: number
 }): Promise<ChainMintingFeeCalculation> {
   
   try {
@@ -150,7 +186,8 @@ export async function calculateActualTransactionFees({
       contractId,
       childCount,
       feeRate,
-      provider
+      provider,
+      sliceCount
     })
     
   } catch (error) {
@@ -171,7 +208,7 @@ export async function calculateActualTransactionFees({
 /**
  * 验证费用计算参数
  */
-function validateFeeCalculationParams(feeRate: number, childCount: number): void {
+function validateFeeCalculationParams(feeRate: number, childCount: number, isCpfpSlice: boolean = false): void {
   if (feeRate < SAFETY_PARAMS.MIN_FEE_RATE || feeRate > SAFETY_PARAMS.MAX_FEE_RATE) {
     throw new ChainMintingError(
       ChainMintingErrorType.FEE_CALCULATION_ERROR,
@@ -179,10 +216,14 @@ function validateFeeCalculationParams(feeRate: number, childCount: number): void
     )
   }
   
-  if (childCount < 1 || childCount > 24) {
+  // 分片0（CPFP分片）最多24笔子交易，其他分片最多25笔子交易
+  const maxChildCount = isCpfpSlice ? 24 : 25
+  const sliceType = isCpfpSlice ? 'CPFP分片' : '普通分片'
+  
+  if (childCount < 1 || childCount > maxChildCount) {
     throw new ChainMintingError(
       ChainMintingErrorType.FEE_CALCULATION_ERROR,
-      `子交易数量超出范围: ${childCount} (允许范围: 1-24)`
+      `子交易数量超出范围: ${childCount} (${sliceType}允许范围: 1-${maxChildCount})`
     )
   }
 }

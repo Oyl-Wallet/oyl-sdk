@@ -5,20 +5,19 @@
  * 100% 复用现有的HARDCODED_TRANSACTION_SIZES和performDryRunFeeCalculation逻辑
  */
 
-import * as bitcoin from 'bitcoinjs-lib'
 import { Provider } from '../provider/provider'
-import { FormattedUtxo } from '../utxo/types'
 import { 
   ChainMintingFeeCalculation,
   AlkaneContractId,
   SAFETY_PARAMS,
   ChainMintingError,
-  ChainMintingErrorType,
-  TransactionFeeAnalysis
+  ChainMintingErrorType
 } from './chainMinting'
 import { 
   performDryRunFeeCalculation,
-  HARDCODED_TRANSACTION_SIZES 
+  HARDCODED_TRANSACTION_SIZES,
+  calculateParentTxVSize,
+  PARENT_TX_VSIZE
 } from './feeCalculation'
 import { MultiRelayWalletSystem } from './multiRelayWalletManager'
 
@@ -138,13 +137,17 @@ export async function calculateParallelFees({
     
     for (let sliceIndex = 0; sliceIndex < walletSystem.totalSlices; sliceIndex++) {
       // 计算该分片的铸造数量
-      const mintCount = calculateSliceMintCount(totalMints, sliceIndex, walletSystem.totalSlices)
+      const mintCount = calculateSliceMintCount(totalMints, sliceIndex)
+      
+      // 计算该分片的子交易数量
+      // 关键：只有第一个分片需要减1（父交易已铸造第1个token），其他分片保持原数量
+      const childCount = sliceIndex === 0 ? mintCount - 1 : mintCount
       
       // 确定费率 (第一片使用CPFP加速)
       const isCpfpSlice = sliceIndex === 0
       const feeRate = isCpfpSlice ? feeRateConfig.cpfpFeeRate : feeRateConfig.standardFeeRate
       
-      console.log(`   🧮 分片 ${sliceIndex}: ${mintCount} tokens, ${feeRate} sat/vB`)
+      console.log(`   🧮 分片 ${sliceIndex}: ${mintCount} tokens → ${childCount} 子交易, ${feeRate} sat/vB`)
       
       // 使用现有的费用计算逻辑 (传入dummy钱包用于API兼容性)
       const dummyWallets = {
@@ -155,9 +158,11 @@ export async function calculateParallelFees({
       const sliceFeeDetails = await performDryRunFeeCalculation({
         wallets: dummyWallets,
         contractId,
-        childCount: mintCount, // 每个分片最多25个mint
+        childCount: childCount, // 传入正确的子交易数量
         feeRate,
-        provider
+        provider,
+        sliceCount: 1, // 每个分片内部独立，使用单分片计算
+        isCpfpSlice // 传入CPFP分片标识，用于正确的子交易数量验证
       })
       
       sliceCalculations.push({
@@ -172,7 +177,7 @@ export async function calculateParallelFees({
     }
     
     // 3. 计算总体统计
-    const summary = calculateParallelSummary(compositeParentFee, sliceCalculations, feeRateConfig)
+    const summary = calculateParallelSummary(compositeParentFee, sliceCalculations)
     
     const result: ParallelFeeCalculation = {
       compositeParentTx: compositeParentFee,
@@ -204,20 +209,16 @@ export async function calculateParallelFees({
 /**
  * 计算复合父交易费用
  * 
- * 基于hardcoded的父交易基础大小，考虑多个分片输出
+ * 基于动态计算的父交易大小，每个额外分片增加33字节
  */
 function calculateCompositeParentFee(
   totalSlices: number, 
   feeRate: number
 ): CompositeParentFeeAnalysis {
   
-  // 基础父交易大小 (1个输入 + 1个OP_RETURN + 1个找零)
-  const baseTxSize = HARDCODED_TRANSACTION_SIZES.PARENT_TX_VSIZE
-  
-  // 每个额外的P2WPKH输出增加约31字节
-  const additionalOutputSize = (totalSlices - 1) * 31 // 减1因为基础大小已包含1个输出
-  
-  const totalVSize = baseTxSize + additionalOutputSize
+  // 动态计算父交易大小：使用calculateParentTxVSize函数
+  // 每个额外分片增加33字节
+  const totalVSize = calculateParentTxVSize(totalSlices)
   const totalFee = Math.ceil(totalVSize * feeRate)
   
   return {
@@ -232,16 +233,21 @@ function calculateCompositeParentFee(
 
 /**
  * 计算分片的铸造数量
+ * 
+ * Alkanes链式铸造规则：每个分片最多25个tokens
+ * 例如：26 tokens = 分片0(25) + 分片1(1)
+ *      50 tokens = 分片0(25) + 分片1(25)
+ *      75 tokens = 分片0(25) + 分片1(25) + 分片2(25)
  */
-function calculateSliceMintCount(totalMints: number, sliceIndex: number, totalSlices: number): number {
-  const baseMintsPerSlice = Math.floor(totalMints / totalSlices)
-  const remainder = totalMints % totalSlices
+function calculateSliceMintCount(totalMints: number, sliceIndex: number): number {
+  const maxTokensPerSlice = 25
+  const remainingMints = totalMints - (sliceIndex * maxTokensPerSlice)
   
-  // 将余数分配给前面的分片
-  if (sliceIndex < remainder) {
-    return baseMintsPerSlice + 1
+  // 每个分片最多25个tokens，最后一个分片可能少于25个
+  if (remainingMints >= maxTokensPerSlice) {
+    return maxTokensPerSlice
   } else {
-    return baseMintsPerSlice
+    return Math.max(0, remainingMints)
   }
 }
 
@@ -250,8 +256,7 @@ function calculateSliceMintCount(totalMints: number, sliceIndex: number, totalSl
  */
 function calculateParallelSummary(
   compositeParentFee: CompositeParentFeeAnalysis,
-  sliceCalculations: SliceFeeCalculation[],
-  feeRateConfig: ParallelFeeRateConfig
+  sliceCalculations: SliceFeeCalculation[]
 ): ParallelFeeCalculation['summary'] {
   
   const totalParentFee = compositeParentFee.totalFee
@@ -413,7 +418,7 @@ export function compareParallelVsSerialFees(
   // 计算串行执行的估算费用 (每次25个token，需要多次执行)
   const executionsNeeded = Math.ceil(parallelFees.totalMints / 25)
   const singleExecutionFee = 
-    Math.ceil(HARDCODED_TRANSACTION_SIZES.PARENT_TX_VSIZE * serialFeeRate) + 
+    Math.ceil(calculateParentTxVSize(1) * serialFeeRate) + 
     (24 * Math.ceil(HARDCODED_TRANSACTION_SIZES.CHILD_TX_VSIZE * serialFeeRate)) +
     Math.ceil(HARDCODED_TRANSACTION_SIZES.FINAL_CHILD_TX_VSIZE * serialFeeRate)
   

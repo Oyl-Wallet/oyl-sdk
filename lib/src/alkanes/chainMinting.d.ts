@@ -133,7 +133,9 @@ export interface ParentTransactionConfig {
 export interface ChildTransactionConfig {
     /** 父交易ID */
     parentTxId: string;
-    /** 父交易vout=0的金额 */
+    /** 父交易vout索引 (默认0，复合父交易时为分片索引) */
+    parentVoutIndex?: number;
+    /** 父交易指定vout的金额 */
     parentOutputValue: number;
     /** 交易索引 (1-24) */
     transactionIndex: number;
@@ -177,6 +179,8 @@ export interface BroadcastConfig {
     confirmationTimeoutMs: number;
     /** 是否等待节点确认后再广播下一笔 */
     waitForAcceptance: boolean;
+    /** 模拟模式：签名交易但不广播 (用于测试) */
+    simulationMode?: boolean;
 }
 /**
  * 广播结果

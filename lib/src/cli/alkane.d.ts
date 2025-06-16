@@ -1,4 +1,5 @@
 import { Command } from 'commander';
+import { AlkaneContractId } from '../alkanes/chainMinting';
 export declare class AlkanesCommand extends Command {
     constructor(cmd: any);
     action(fn: any): this;
@@ -19,4 +20,12 @@ export declare const alkaneList: AlkanesCommand;
 export declare const alkaneBatchExecute: AlkanesCommand;
 export declare const alkaneEstimateFee: AlkanesCommand;
 export declare const alkaneChainMint: AlkanesCommand;
+export declare function executeParallelChainMinting_CLI({ options, contractId, totalMints, feeRate, provider, wallet }: {
+    options: any;
+    contractId: AlkaneContractId;
+    totalMints: number;
+    feeRate: number;
+    provider: any;
+    wallet: any;
+}): Promise<void>;
 export declare const alkaneVerifyChain: AlkanesCommand;

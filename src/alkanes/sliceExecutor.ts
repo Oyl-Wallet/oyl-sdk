@@ -134,7 +134,8 @@ export async function executeSlice(
     }
     
     // 2. 获取初始参数
-    const childCount = feeCalculation.mintCount
+    // 修复：使用feeDetails.childCount（实际子交易数量）而不是mintCount（tokens数量）
+    const childCount = feeCalculation.feeDetails.childCount
     const childTxFee = feeCalculation.feeDetails.childTx.totalFee
     const initialRelayAmount = feeCalculation.feeDetails.relayFuelAmount
     
@@ -249,7 +250,7 @@ async function executeChildTransactionChainWithTracking({
   const completedTxs: BuiltTransaction[] = []
   let currentTxId = parentTxId
   let currentOutputValue = initialRelayAmount
-  let currentVoutIndex = parentVoutIndex // 追踪当前使用的vout索引
+  // let currentVoutIndex = parentVoutIndex // 追踪当前使用的vout索引（暂时未使用）
   
   for (let i = 1; i <= childCount; i++) {
     const isLastTransaction = (i === childCount)
@@ -263,6 +264,7 @@ async function executeChildTransactionChainWithTracking({
       // 构建子交易 (100%复用现有逻辑)
       const childTx = await buildChildTransaction({
         parentTxId: currentTxId,
+        parentVoutIndex: i === 1 ? parentVoutIndex : 0, // 第一笔使用指定vout，后续使用0
         parentOutputValue: currentOutputValue,
         transactionIndex: i,
         isLastTransaction,
@@ -313,16 +315,12 @@ async function executeChildTransactionChainWithTracking({
       
       onProgress?.(i, childTx.expectedTxId, `子交易 ${i} 广播成功`)
       
-      // 检查是否为最后交易（通过输出金额判断）
-      if (childTx.outputValue <= 330) {
-        console.log(`🎉 ${slicePrefix}检测到最后交易 (输出=${childTx.outputValue} sats)，提前结束`)
-        break
-      }
+      // 移除基于输出金额的提前结束逻辑，依赖childCount控制循环
       
       // 为下一笔交易准备
       currentTxId = childTx.expectedTxId
       currentOutputValue = childTx.outputValue
-      currentVoutIndex = 0 // 子交易总是使用vout=0作为输入
+      // currentVoutIndex = 0 // 子交易总是使用vout=0作为输入（暂时未使用）
       
       // 短暂延迟避免网络拥堵 (复用现有逻辑)
       if (!isLastTransaction) {

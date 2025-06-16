@@ -88,9 +88,9 @@ export interface CompositeParentVoutLayout {
  * 构建、签名、广播复合父交易
  * 
  * 复合父交易vout布局：
- * - vout 0-N: 各分片中继输出 (P2WPKH)
- * - vout N+1: OP_RETURN (Protostone指令)  
- * - vout N+2: 主钱包找零 (P2TR, 可选)
+ * - vout 0 到 vout N-1: 各分片中继输出 (P2WPKH)
+ * - vout N: OP_RETURN (Protostone指令)  
+ * - vout N+1: 主钱包找零 (P2TR, 可选)
  * 
  * 关键特性：
  * - 100%复用现有buildSignAndBroadcastParentTransaction的PSBT逻辑

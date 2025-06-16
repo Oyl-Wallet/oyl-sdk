@@ -40,6 +40,21 @@ export async function broadcastSingleTransactionWithRpc(
   // 如果没有提供RPC客户端，创建一个
   const client = rpcClient || createRpcClient(networkType)
   
+  // 模拟模式：跳过实际广播，返回成功结果
+  if (config.simulationMode) {
+    console.log(`🎭 模拟广播交易 (自定义RPC): ${expectedTxId}`)
+    console.log(`   模拟模式：签名完成，跳过实际广播`)
+    await sleep(100) // 模拟网络延迟
+    console.log(`✅ 模拟广播成功 (自定义RPC): ${expectedTxId}`)
+    
+    return {
+      txId: expectedTxId,
+      timestamp: Date.now(),
+      retryCount: 0,
+      success: true
+    }
+  }
+  
   console.log(`📡 开始广播交易 (自定义RPC): ${expectedTxId}`)
   
   // 检查是否为无限重试模式 (maxRetries = 0)
@@ -126,6 +141,21 @@ export async function broadcastSingleTransaction(
   const startTime = Date.now()
   let retryCount = 0
   let lastError: string | undefined
+  
+  // 模拟模式：跳过实际广播，返回成功结果
+  if (config.simulationMode) {
+    console.log(`🎭 模拟广播交易: ${expectedTxId}`)
+    console.log(`   模拟模式：签名完成，跳过实际广播`)
+    await sleep(100) // 模拟网络延迟
+    console.log(`✅ 模拟广播成功: ${expectedTxId}`)
+    
+    return {
+      txId: expectedTxId,
+      timestamp: Date.now(),
+      retryCount: 0,
+      success: true
+    }
+  }
   
   console.log(`📡 开始广播交易: ${expectedTxId}`)
   
@@ -675,10 +705,12 @@ export async function broadcastTransactionChainWithRpc({
     
     successCount++
     
-    // 2. 等待父交易被节点接受（简化版）
+    // 2. 等待父交易被节点接受（模拟随机等待时间）
     if (config.waitForAcceptance) {
-      console.log(`\n⏰ Step 2: 等待父交易被节点接受 (1秒延迟)`)
-      await sleep(1000) // 简化的等待逻辑
+      const randomWaitTime = Math.floor(Math.random() * (30000 - 10000 + 1)) + 10000 // 10-30秒随机等待
+      console.log(`\n⏰ Step 2: 等待父交易被打包 (模拟随机等待 ${(randomWaitTime/1000).toFixed(1)}秒)`)
+      await sleep(randomWaitTime) // 模拟父交易被打包的等待时间
+      console.log(`✅ 父交易等待完成，继续执行子交易`)
     }
     
     // 3. 逐个广播子交易

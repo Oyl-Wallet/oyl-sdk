@@ -551,6 +551,7 @@ export async function buildChildTransaction(
   
   const {
     parentTxId,
+    parentVoutIndex = 0,
     parentOutputValue,
     transactionIndex,
     isLastTransaction,
@@ -577,7 +578,7 @@ export async function buildChildTransaction(
     
     psbt.addInput({
       hash: parentTxId,
-      index: 0,  // 固定使用vout=0
+      index: parentVoutIndex,  // 使用正确的vout索引
       witnessUtxo: {
         value: parentOutputValue,
         script: relayScript

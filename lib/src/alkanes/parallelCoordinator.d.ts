@@ -124,3 +124,11 @@ export declare function validateParallelMintingConfig(config: ParallelMintingCon
     isValid: boolean;
     errors: string[];
 };
+/**
+ * 恢复中断的并行铸造执行
+ */
+export declare function resumeParallelChainMinting(orderId: string, onProgress?: ParallelProgressCallback): Promise<ParallelMintingResult>;
+/**
+ * 增强版executeParallelChainMinting - 支持完整状态同步和配置保存
+ */
+export declare function executeParallelChainMintingWithTracking(config: ParallelMintingConfig, onProgress?: ParallelProgressCallback): Promise<ParallelMintingResult>;

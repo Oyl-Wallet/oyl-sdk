@@ -7,7 +7,7 @@ import * as alkanes from '../alkanes/alkanes'
 import * as utxo from '../utxo'
 import { Wallet } from './wallet'
 import { contractDeployment } from '../alkanes/contract'
-import { send, split, tokenDeployment } from '../alkanes/token'
+import { send, tokenDeployment } from '../alkanes/token'
 import { AlkanesPayload } from 'shared/interface'
 import { encodeRunestoneProtostone } from 'alkanes/lib/protorune/proto_runestone_upgrade'
 import { ProtoStone } from 'alkanes/lib/protorune/protostone'
@@ -21,127 +21,13 @@ import { removeLiquidity, addLiquidity, swap } from '../amm/pool'
 import { packUTF8, inscriptionSats } from '../shared/utils'
 import { AccountUtxoPortfolio, FormattedUtxo } from '../utxo/types'
 import { 
-  generateChainMintingWalletsFromEnv,
-  performDryRunFeeCalculation,
   AlkaneContractId,
-  ChainMintingError,
-  HARDCODED_TRANSACTION_SIZES
+  ChainMintingError
 } from '../alkanes/chainMinting'
 import { 
-  buildSignAndBroadcastParentTransaction, 
-  buildAndBroadcastChildTransactionChain,
-  executeCompleteChainMinting,
   verifyExistingChain
 } from '../alkanes/transactionBuilder'
 import { formatVerificationResult, ChainExecutionStatus } from '../alkanes/chainVerification'
-import { ChainMintOrder, ChainMintOrderManager, OrderExecutionMode } from '../alkanes/chainMintOrder'
-// ============================================================================
-// 订单跟踪的子交易链执行函数
-// ============================================================================
-
-/**
- * 执行子交易链并实时更新订单状态
- */
-async function executeChildTransactionChainWithTracking({
-  parentTxId,
-  initialRelayAmount,
-  wallets,
-  contractId,
-  childCount,
-  childTxFee,
-  finalReceiverAddress,
-  provider,
-  broadcastConfig,
-  order,
-  orderManager
-}: {
-  parentTxId: string
-  initialRelayAmount: number
-  wallets: any
-  contractId: AlkaneContractId
-  childCount: number
-  childTxFee: number
-  finalReceiverAddress: string
-  provider: any
-  broadcastConfig: any
-  order?: ChainMintOrder | null
-  orderManager?: ChainMintOrderManager
-}) {
-  const completedTxs: any[] = []
-  let currentTxId = parentTxId
-  let currentOutputValue = initialRelayAmount
-
-  for (let i = 1; i <= childCount; i++) {
-    const isLastTransaction = (i === childCount)
-    
-    console.log(`📦 构建子交易 ${i}/${childCount}${isLastTransaction ? ' (最后)' : ''}`)
-    
-    try {
-      // 构建子交易
-      const { buildChildTransaction } = await import('../alkanes/transactionBuilder')
-      const childTx = await buildChildTransaction({
-        parentTxId: currentTxId,
-        parentOutputValue: currentOutputValue,
-        transactionIndex: i,
-        isLastTransaction,
-        finalReceiverAddress,
-        wallets,
-        contractId,
-        childTxFee,
-        provider
-      })
-      
-      // 广播子交易
-      const { broadcastSingleTransaction } = await import('../alkanes/transactionBroadcaster')
-      const broadcastResult = await broadcastSingleTransaction(
-        childTx.psbtHex,
-        childTx.expectedTxId,
-        provider,
-        broadcastConfig
-      )
-      
-      if (!broadcastResult.success) {
-        throw new Error(`子交易 ${i} 广播失败: ${broadcastResult.error}`)
-      }
-      
-      completedTxs.push({
-        ...childTx,
-        index: i,
-        isLast: isLastTransaction
-      })
-      
-      console.log(`✅ 子交易 ${i} 完成: ${childTx.expectedTxId}`)
-      
-      // 更新订单进度
-      if (order && orderManager) {
-        await orderManager.updateOrderProgress(order.id, {
-          completedChildTxs: i,
-          lastTxId: childTx.expectedTxId,
-          lastOutputAmount: childTx.outputValue
-        })
-      }
-      
-      // 检查是否为最后交易（通过输出金额判断）
-      if (childTx.outputValue <= 330) {
-        console.log(`🎉 检测到最后交易 (输出=${childTx.outputValue} sats)，提前结束`)
-        break
-      }
-      
-      // 为下一笔交易准备
-      currentTxId = childTx.expectedTxId
-      currentOutputValue = childTx.outputValue
-      
-      // 短暂延迟避免网络拥堵
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      
-    } catch (error) {
-      console.error(`💥 子交易 ${i} 失败: ${error.message}`)
-      throw error
-    }
-  }
-  
-  return completedTxs
-}
 
 /* @dev example call
   oyl alkane trace -params '{"txid":"e6561c7a8f80560c30a113c418bb56bde65694ac2b309a68549f35fdf2e785cb","vout":0}'
@@ -1251,7 +1137,7 @@ export const alkaneEstimateFee = new AlkanesCommand('estimate-fee')
 // ============================================================================
 
 export const alkaneChainMint = new AlkanesCommand('chain-mint')
-  .description('Execute Project Snowball (≤25 tokens) or Project Supercluster (>25 tokens) chain minting')
+  .description('Execute unified alkane chain minting with automatic scaling (1-2500 tokens)')
   .option(
     '-p, --provider <provider>',
     'Network provider type (regtest, bitcoin, testnet)',
@@ -1267,18 +1153,13 @@ export const alkaneChainMint = new AlkanesCommand('chain-mint')
   )
   .option(
     '-n, --total-mints <count>',
-    'Total number of tokens to mint (1-2500). If >25, uses parallel Project Supercluster',
+    'Total number of tokens to mint (1-2500). Automatically scales execution strategy',
     '25'
   )
   .option(
     '--fee-rate <sats>',
     'Fee rate in sat/vB',
     '10'
-  )
-  .option(
-    '--child-count <count>',
-    'Number of child transactions per slice (1-24, only for Snowball mode)',
-    '24'
   )
   .option(
     '--cpfp-multiplier <multiplier>',
@@ -1325,6 +1206,10 @@ export const alkaneChainMint = new AlkanesCommand('chain-mint')
     '--verbose',
     'Enable verbose logging'
   )
+  .option(
+    '--simulate',
+    'Simulation mode: Sign transactions but do not broadcast (for testing)'
+  )
   .action(async (options) => {
     try {
       // 1. 验证必需参数
@@ -1359,38 +1244,30 @@ export const alkaneChainMint = new AlkanesCommand('chain-mint')
         throw new Error('Total mints must be between 1 and 2500')
       }
 
-      // 4. 检测执行模式
-      const isParallelMode = totalMints > 25
-      const projectName = isParallelMode ? 'PROJECT SUPERCLUSTER' : 'PROJECT SNOWBALL'
+      // 4. 显示配置信息
+      const expectedSlices = Math.ceil(totalMints / 25)
       
-      console.log(`\n🚀 ${projectName} - Alkane Chain Minting`)
-      console.log(`${'='.repeat(projectName.length + 25)}\n`)
+      console.log(`\n🚀 Alkane Chain Minting`)
+      console.log(`==============================\n`)
 
       console.log(`📋 Configuration:`)
-      console.log(`   Project: ${projectName}`)
       console.log(`   Network: ${options.provider}`)
       console.log(`   Contract: ${options.contract}`)
       console.log(`   Receiver: ${options.receiver}`)
       console.log(`   Total Mints: ${totalMints} tokens`)
       console.log(`   Fee Rate: ${feeRate} sat/vB`)
       console.log(`   Dry Run: ${options.dryRun ? 'Yes' : 'No'}`)
+      console.log(`   Simulation Mode: ${options.simulate ? 'Yes' : 'No'}`)
+      console.log(`   Expected Slices: ${expectedSlices}`)
       
-      if (isParallelMode) {
-        const expectedSlices = Math.ceil(totalMints / 25)
+      if (expectedSlices > 1) {
         const maxConcurrent = parseInt(options.maxConcurrent)
         const cpfpMultiplier = parseFloat(options.cpfpMultiplier)
         const enableParallel = !options.disableParallel
         
-        console.log(`   Expected Slices: ${expectedSlices}`)
         console.log(`   CPFP Multiplier: ${cpfpMultiplier}x`)
         console.log(`   Max Concurrent: ${maxConcurrent}`)
         console.log(`   Parallel Execution: ${enableParallel ? 'Enabled' : 'Disabled'}`)
-      } else {
-        const childCount = parseInt(options.childCount)
-        if (childCount < 1 || childCount > 24) {
-          throw new Error('Child count must be between 1 and 24')
-        }
-        console.log(`   Child Transactions: ${Math.min(childCount, totalMints)}`)
       }
       console.log(``)
 
@@ -1398,26 +1275,15 @@ export const alkaneChainMint = new AlkanesCommand('chain-mint')
       const wallet: Wallet = new Wallet({ networkType: options.provider })
       const provider = wallet.provider
 
-      // 6. 路由到适当的执行模式
-      if (isParallelMode) {
-        await executeParallelChainMinting_CLI({
-          options,
-          contractId,
-          totalMints,
-          feeRate,
-          provider,
-          wallet
-        })
-      } else {
-        await executeSnowballChainMinting_CLI({
-          options,
-          contractId,
-          totalMints,
-          feeRate,
-          provider,
-          wallet
-        })
-      }
+      // 6. 执行统一的Supercluster逻辑 (兼容所有场景)
+      await executeParallelChainMinting_CLI({
+        options,
+        contractId,
+        totalMints,
+        feeRate,
+        provider,
+        wallet
+      })
 
     } catch (error) {
       console.error(`\n💥 Chain Minting Failed:`)
@@ -1465,7 +1331,7 @@ export async function executeParallelChainMinting_CLI({
   provider: any
   wallet: any
 }) {
-  const { executeParallelChainMinting, validateParallelMintingConfig } = await import('../alkanes/parallelCoordinator')
+  const { executeParallelChainMintingWithTracking, validateParallelMintingConfig } = await import('../alkanes/parallelCoordinator')
 
   console.log(`🔐 Generating multi-relay wallet system...`)
   
@@ -1497,7 +1363,8 @@ export async function executeParallelChainMinting_CLI({
       maxRetries: parseInt(options.retryMax || '3'),
       retryDelayMs: parseInt(options.retryDelay || '5000'),
       confirmationTimeoutMs: 0,
-      waitForAcceptance: !options.noWait
+      waitForAcceptance: !options.noWait,
+      simulationMode: options.simulate || false
     },
     enableParallelExecution: !options.disableParallel,
     maxConcurrentSlices: parseInt(options.maxConcurrent),
@@ -1514,7 +1381,7 @@ export async function executeParallelChainMinting_CLI({
   if (options.dryRun) {
     console.log(`🎯 DRY RUN COMPLETE - No transactions were executed`)
     console.log(``)
-    console.log(`📊 Execution Plan (Project Supercluster):`)
+    console.log(`📊 Execution Plan:`)
     console.log(`   1. Generate ${Math.ceil(totalMints / 25)} relay wallets`)
     console.log(`   2. Build composite parent transaction with multiple outputs`)
     console.log(`   3. Execute CPFP acceleration for first slice`)
@@ -1526,12 +1393,12 @@ export async function executeParallelChainMinting_CLI({
   }
   
   // 执行并行铸造
-  const result = await executeParallelChainMinting(config, (progress) => {
+  const result = await executeParallelChainMintingWithTracking(config, (progress) => {
     console.log(`📊 Progress: ${progress.overallProgress}% - ${progress.message}`)
   })
   
   if (result.success) {
-    console.log(`\n🎉 PROJECT SUPERCLUSTER 执行成功！`)
+    console.log(`\n🎉 链式铸造执行成功！`)
     console.log(`   总耗时: ${(result.totalDuration / 1000).toFixed(1)} 秒`)
     console.log(`   成功分片: ${result.statistics.successfulSlices}/${result.statistics.totalSlices}`)
     console.log(`   铸造tokens: ${result.statistics.totalTokensMinted}`)
@@ -1541,247 +1408,6 @@ export async function executeParallelChainMinting_CLI({
   }
 }
 
-// ============================================================================
-// Project Snowball CLI执行函数 (现有逻辑)
-// ============================================================================
-
-export async function executeSnowballChainMinting_CLI({
-  options,
-  contractId,
-  totalMints,
-  feeRate,
-  provider,
-  wallet
-}: {
-  options: any
-  contractId: AlkaneContractId
-  totalMints: number
-  feeRate: number
-  provider: any
-  wallet: any
-}) {
-  try {
-    const childCount = Math.min(parseInt(options.childCount), totalMints)
-
-    console.log(`🔐 Generating wallet system...`)
-    const wallets = await generateChainMintingWalletsFromEnv(provider.network)
-    
-    console.log(`   Main Wallet: ${wallets.mainWallet.account.taproot.address}`)
-    console.log(`   Relay Wallet: ${wallets.relayWallet.account.nativeSegwit.address}`)
-    console.log(`   Relay Index: ${wallets.relayWalletIndex}`)
-    console.log(``)
-
-    // 费用计算
-    console.log(`🧮 Calculating fees...`)
-    const feeCalculation = await performDryRunFeeCalculation({
-      wallets,
-      contractId,
-      childCount,
-      feeRate,
-      provider
-    })
-
-    // 计算详细的费用分解
-    const normalChildFee = Math.ceil(HARDCODED_TRANSACTION_SIZES.CHILD_TX_VSIZE * feeRate)
-    const finalChildFee = Math.ceil(HARDCODED_TRANSACTION_SIZES.FINAL_CHILD_TX_VSIZE * feeRate)
-    const normalChildCount = childCount - 1
-    const finalOutputDust = 330 // P2TR dust threshold
-    
-    console.log(`💰 Fee Calculation Result:`)
-    console.log(`   Parent TX: ${feeCalculation.parentTx.totalFee} sats (${HARDCODED_TRANSACTION_SIZES.PARENT_TX_VSIZE} vB × ${feeRate} sat/vB)`)
-    console.log(`   Normal Child TX (1-${normalChildCount}): ${normalChildFee} sats each (${HARDCODED_TRANSACTION_SIZES.CHILD_TX_VSIZE} vB × ${feeRate} sat/vB)`)
-    console.log(`   Final Child TX (${childCount}): ${finalChildFee} sats (${HARDCODED_TRANSACTION_SIZES.FINAL_CHILD_TX_VSIZE} vB × ${feeRate} sat/vB)`)
-    console.log(`   Total Child Fees: ${feeCalculation.totalChildFees} sats`)
-    console.log(`   Final Output Dust: ${finalOutputDust} sats (P2TR minimum)`)
-    console.log(`   Relay Fuel: ${feeCalculation.relayFuelAmount} sats (including final output)`)
-    console.log(`   Total Required: ${feeCalculation.totalRequiredFunding} sats`)
-    console.log(``)
-
-    // 检查资金充足性
-    console.log(`💳 Checking balance...`)
-    const accountPortfolio = await utxo.accountUtxos({
-      account: wallets.mainWallet.account,
-      provider
-    })
-
-    const totalBtcBalance = accountPortfolio.accountTotalBalance
-    console.log(`   Available BTC: ${totalBtcBalance} sats`)
-    
-    if (totalBtcBalance < feeCalculation.totalRequiredFunding) {
-      throw new Error(
-        `Insufficient funds: need ${feeCalculation.totalRequiredFunding} sats, have ${totalBtcBalance} sats`
-      )
-    }
-    
-    console.log(`   ✅ Sufficient funds available`)
-    console.log(``)
-
-    // 准备订单管理器 (订单将在父交易成功后创建)
-    const { ChainMintOrderManager } = await import('../alkanes/chainMintOrder')
-    const orderManager = new ChainMintOrderManager()
-    let order: any = null
-
-    // Dry run模式
-    if (options.dryRun) {
-      console.log(`🎯 DRY RUN COMPLETE - No transactions were executed`)
-      console.log(``)
-      console.log(`📊 Execution Plan:`)
-      console.log(`   1. Build parent transaction (TX₀)`)
-      console.log(`   2. Build ${childCount} child transactions (TX₁-TX₂₄)`)
-      console.log(`   3. Broadcast parent transaction and wait for acceptance`)
-      console.log(`   4. Sequentially broadcast child transactions`)
-      console.log(`   5. Monitor final token balance at receiver address`)
-      console.log(``)
-      console.log(`💡 To execute for real, remove the --dry-run flag`)
-      return
-    }
-
-    // 选择执行模式
-    console.log(`🏗️  Starting chain execution...`)
-    
-    // 配置广播参数
-    const broadcastConfig = {
-      maxRetries: parseInt(options.retryMax),
-      retryDelayMs: parseInt(options.retryDelay),
-      confirmationTimeoutMs: 0,  // 0 = 无超时限制
-      waitForAcceptance: true  // 等待进入交易池
-    }
-
-    // 配置验证参数
-    const verificationTimeoutMs = parseInt(options.verificationTimeout) * 60 * 1000 // 转换为毫秒
-    const verificationConfig = {
-      pollInterval: 10000,  // 10秒检查一次
-      maxWaitTime: verificationTimeoutMs,
-      verboseLogging: options.verbose || false,
-      checkAssetBalance: true
-    }
-
-    // 执行 Chain-Mint 并跟踪订单状态
-    try {
-      if (options.enableVerification) {
-        // 使用完整的执行+验证流程
-        console.log(`📦 执行模式: 完整验证 (包含链上验证和资产查询)`)
-        console.log(`   验证超时: ${options.verificationTimeout} 分钟`)
-        
-        const result = await executeCompleteChainMinting({
-          wallets,
-          contractId,
-          feeCalculation,
-          provider,
-          utxos: accountPortfolio.accountUtxos,
-          broadcastConfig,
-          finalReceiverAddress: options.receiver,
-          childCount,
-          verificationConfig
-        })
-
-        console.log(`\n🎉 PROJECT SNOWBALL 完整执行完成！`)
-        console.log(formatVerificationResult(result.verificationResult))
-
-      } else {
-        // 使用传统的执行流程（不验证）+ 订单跟踪
-        console.log(`📦 执行模式: 标准执行 (不包含验证)`)
-        
-        // Step 1: 构建、签名、广播父交易
-        console.log(`\n📦 Step 1: 处理父交易`)
-        const parentTx = await buildSignAndBroadcastParentTransaction({
-          wallets,
-          contractId,
-          feeCalculation,
-          provider,
-          utxos: accountPortfolio.accountUtxos,
-          broadcastConfig
-        })
-        
-        console.log(`✅ 父交易完成: ${parentTx.expectedTxId}`)
-        
-        // 创建订单记录 (只有父交易成功后才创建，避免无意义的记录)
-        console.log(`📝 创建订单记录...`)
-        order = await orderManager.createOrder({
-          contractId,
-          finalReceiverAddress: options.receiver,
-          network: options.provider,
-          relayWalletIndex: wallets.relayWalletIndex,
-          relayAddress: wallets.relayWallet.account.nativeSegwit.address,
-          feeRate: feeRate,
-          childCount: childCount,
-          totalMints: totalMints, // 新增
-          executionMode: OrderExecutionMode.SNOWBALL, // 明确指定模式
-          broadcastConfig: broadcastConfig,
-          verificationConfig: options.enableVerification ? {
-            enabled: true,
-            ...verificationConfig
-          } : undefined
-        })
-        
-        // 立即更新父交易ID
-        await orderManager.updateOrderProgress(order.id, {
-          parentTxId: parentTx.expectedTxId
-        })
-        
-        console.log(`✅ 订单已创建: ${order.id}`)
-
-        // Step 2: 串行执行子交易链 + 订单跟踪
-        console.log(`\n📦 Step 2: 开始串行子交易链`)
-        const childTxs = await executeChildTransactionChainWithTracking({
-          parentTxId: parentTx.expectedTxId,
-          initialRelayAmount: feeCalculation.relayFuelAmount,
-          wallets,
-          contractId,
-          childCount,
-          childTxFee: feeCalculation.childTx.totalFee,
-          finalReceiverAddress: options.receiver,
-          provider,
-          broadcastConfig,
-          order,
-          orderManager
-        })
-
-        console.log(`\n🎉 PROJECT SNOWBALL 执行完成！`)
-        console.log(`   父交易: ${parentTx.expectedTxId}`)
-        console.log(`   子交易数量: ${childTxs.length}`)
-        console.log(`   最终输出: ${childTxs[childTxs.length - 1]?.outputValue || 0} sats`)
-      }
-      
-      // 标记订单完成
-      if (order) {
-        await orderManager.markOrderAsCompleted(order.id)
-      }
-      
-    } catch (error) {
-      // 处理执行过程中的中断
-      if (order) {
-        await orderManager.markOrderAsInterrupted(order.id, error.message)
-      }
-      throw error
-    }
-    
-  } catch (error) {
-    console.error(`\n💥 Chain Minting Failed:`)
-    
-    if (error instanceof ChainMintingError) {
-      console.error(`   Error Type: ${error.type}`)
-      console.error(`   Message: ${error.message}`)
-      if (error.details && options.verbose) {
-        console.error(`   Details:`, JSON.stringify(error.details, null, 2))
-      }
-    } else {
-      console.error(`   ${error.message}`)
-      if (options.verbose) {
-        console.error(`   Stack:`, error.stack)
-      }
-    }
-    
-    console.error(`\n💡 Troubleshooting tips:`)
-    console.error(`   1. Check that BATCH_MINT_MNEMONIC is set in your .env file`)
-    console.error(`   2. Ensure sufficient BTC balance in your main wallet`)
-    console.error(`   3. Verify the contract ID exists and is a valid mint contract`)
-    console.error(`   4. Try running with --dry-run first to check the setup`)
-    console.error(`   5. Use --verbose for more detailed error information`)
-    
-    throw error // Re-throw to let the parent handler deal with it
-  }
-}
 
 // ============================================================================
 // 链上验证命令
