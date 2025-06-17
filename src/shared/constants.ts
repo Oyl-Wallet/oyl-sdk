@@ -9,6 +9,8 @@ export const maximumScriptBytes = 520
 
 export const MAXIMUM_FEE = 5000000
 
+export const RBF_SEQUENCE = 0xfffffffd
+
 
 export const regtestOpts: MnemonicToAccountOptions = {
   network: bitcoin.networks.regtest,

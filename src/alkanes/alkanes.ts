@@ -25,6 +25,7 @@ import { toXOnly } from 'bitcoinjs-lib/src/psbt/bip371'
 import { LEAF_VERSION_TAPSCRIPT } from 'bitcoinjs-lib/src/payments/bip341'
 import { actualDeployCommitFee } from './contract'
 import { selectSpendableUtxos, type FormattedUtxo } from '../utxo'
+import { RBF_SEQUENCE } from '../shared/constants'
 
 export interface ProtostoneMessage {
   protocolTag?: bigint
@@ -64,6 +65,7 @@ export const createExecutePsbt = async ({
   provider,
   feeRate,
   fee = 0,
+  enableRbf = false,
 }: {
   alkanesUtxos?: FormattedUtxo[]
   frontendFee?: bigint
@@ -74,6 +76,7 @@ export const createExecutePsbt = async ({
   provider: Provider
   feeRate?: number
   fee?: number
+  enableRbf?: boolean
 }) => {
   try {
     const SAT_PER_VBYTE = feeRate ?? 1
@@ -125,7 +128,7 @@ export const createExecutePsbt = async ({
       }
     }
     for (const utxo of gatheredUtxos.utxos) {
-      await addInputForUtxo(psbt, utxo, account, provider)
+      await addInputForUtxo(psbt, utxo, account, provider, enableRbf)
     }
 
     psbt.addOutput({ address: account.taproot.address, value: 546 })
@@ -177,7 +180,8 @@ async function addInputForUtxo(
   psbt: bitcoin.Psbt,
   utxo: FormattedUtxo,
   account: Account,
-  provider: Provider
+  provider: Provider,
+  enableRbf?: boolean
 ) {
   const type = getAddressType(utxo.address)
   switch (type) {
@@ -188,6 +192,7 @@ async function addInputForUtxo(
         hash: utxo.txId,
         index: +utxo.outputIndex,
         nonWitnessUtxo: Buffer.from(prevHex, 'hex'),
+        ...(enableRbf && { sequence: RBF_SEQUENCE }),
       })
       break
     }
@@ -710,6 +715,7 @@ export const executePsbt = async ({
   feeRate,
   frontendFee,
   feeAddress,
+  enableRbf = false,
 }: {
   alkanesUtxos?: FormattedUtxo[]
   utxos: FormattedUtxo[]
@@ -719,6 +725,7 @@ export const executePsbt = async ({
   feeRate?: number
   frontendFee?: bigint
   feeAddress?: string
+  enableRbf?: boolean
 }) => {
   const { fee } = await actualExecuteFee({
     alkanesUtxos,
@@ -741,6 +748,7 @@ export const executePsbt = async ({
     provider,
     feeRate,
     fee,
+    enableRbf,
   })
 
   return { psbt: finalPsbt, fee }
@@ -756,6 +764,7 @@ export const execute = async ({
   signer,
   frontendFee,
   feeAddress,
+  enableRbf = false,
 }: {
   alkanesUtxos?: FormattedUtxo[]
   utxos: FormattedUtxo[]
@@ -766,6 +775,7 @@ export const execute = async ({
   signer: Signer
   frontendFee?: bigint
   feeAddress?: string
+  enableRbf?: boolean
 }) => {
   const { fee } = await actualExecuteFee({
     alkanesUtxos,
@@ -788,6 +798,7 @@ export const execute = async ({
     provider,
     feeRate,
     fee,
+    enableRbf,
   })
 
   const { signedPsbt } = await signer.signAllInputs({

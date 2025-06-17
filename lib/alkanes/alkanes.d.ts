@@ -13,7 +13,7 @@ export interface ProtostoneMessage {
     calldata: bigint[];
 }
 export declare const encodeProtostone: ({ protocolTag, edicts, pointer, refundPointer, calldata, }: ProtostoneMessage) => Buffer;
-export declare const createExecutePsbt: ({ alkanesUtxos, frontendFee, feeAddress, utxos, account, protostone, provider, feeRate, fee, }: {
+export declare const createExecutePsbt: ({ alkanesUtxos, frontendFee, feeAddress, utxos, account, protostone, provider, feeRate, fee, enableRbf, }: {
     alkanesUtxos?: FormattedUtxo[];
     frontendFee?: bigint;
     feeAddress?: string;
@@ -23,6 +23,7 @@ export declare const createExecutePsbt: ({ alkanesUtxos, frontendFee, feeAddress
     provider: Provider;
     feeRate?: number;
     fee?: number;
+    enableRbf?: boolean;
 }) => Promise<{
     psbt: string;
     psbtHex: string;
@@ -109,7 +110,7 @@ export declare const actualExecuteFee: ({ alkanesUtxos, utxos, account, protosto
     fee: number;
     vsize: number;
 }>;
-export declare const executePsbt: ({ alkanesUtxos, utxos, account, protostone, provider, feeRate, frontendFee, feeAddress, }: {
+export declare const executePsbt: ({ alkanesUtxos, utxos, account, protostone, provider, feeRate, frontendFee, feeAddress, enableRbf, }: {
     alkanesUtxos?: FormattedUtxo[];
     utxos: FormattedUtxo[];
     account: Account;
@@ -118,11 +119,12 @@ export declare const executePsbt: ({ alkanesUtxos, utxos, account, protostone, p
     feeRate?: number;
     frontendFee?: bigint;
     feeAddress?: string;
+    enableRbf?: boolean;
 }) => Promise<{
     psbt: string;
     fee: number;
 }>;
-export declare const execute: ({ alkanesUtxos, utxos, account, protostone, provider, feeRate, signer, frontendFee, feeAddress, }: {
+export declare const execute: ({ alkanesUtxos, utxos, account, protostone, provider, feeRate, signer, frontendFee, feeAddress, enableRbf, }: {
     alkanesUtxos?: FormattedUtxo[];
     utxos: FormattedUtxo[];
     account: Account;
@@ -132,6 +134,7 @@ export declare const execute: ({ alkanesUtxos, utxos, account, protostone, provi
     signer: Signer;
     frontendFee?: bigint;
     feeAddress?: string;
+    enableRbf?: boolean;
 }) => Promise<{
     txId: string;
     rawTx: string;
