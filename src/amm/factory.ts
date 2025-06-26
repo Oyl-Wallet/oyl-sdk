@@ -253,12 +253,6 @@ export const createNewPoolPsbt = async ({
         protocolTag: 1n,
         pointer: 0,
         refundPointer: 0,
-        calldata: encipher([]),
-      }),
-      ProtoStone.message({
-        protocolTag: 1n,
-        pointer: 0,
-        refundPointer: 0,
         calldata: encipher(calldata),
       }),
     ],
@@ -426,6 +420,7 @@ export const poolPsbt = async ({
     let finalFee = fee === 0 ? calculatedFee : fee
 
     gatheredUtxos = findXAmountOfSats([...utxos], Number(finalFee) + 546)
+
 
     let psbt = new bitcoin.Psbt({ network: provider.network })
 

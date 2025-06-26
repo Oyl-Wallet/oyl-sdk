@@ -127,12 +127,6 @@ export const addLiquidityPsbt = async ({
         protocolTag: 1n,
         pointer: 0,
         refundPointer: 0,
-        calldata: encipher([]),
-      }),
-      ProtoStone.message({
-        protocolTag: 1n,
-        pointer: 0,
-        refundPointer: 0,
         calldata: encipher(calldata),
       }),
     ],
@@ -277,12 +271,6 @@ export const removeLiquidityPsbt = async ({
         edicts,
         pointer: 0,
         refundPointer: 0,
-        calldata: encipher([]),
-      }),
-      ProtoStone.message({
-        protocolTag: 1n,
-        pointer: 0,
-        refundPointer: 0,
         calldata: encipher(calldata),
       }),
     ],
@@ -393,12 +381,6 @@ export const swapPsbt = async ({
       ProtoStone.message({
         protocolTag: 1n,
         edicts,
-        pointer: 0,
-        refundPointer: 0,
-        calldata: encipher([]),
-      }),
-      ProtoStone.message({
-        protocolTag: 1n,
         pointer: 0,
         refundPointer: 0,
         calldata: encipher(calldata),
