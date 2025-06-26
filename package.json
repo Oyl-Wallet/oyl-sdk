@@ -25,6 +25,9 @@
   "resolutions": {
     "crypto-js": "4.2.0",
     "jsrsasign": "11.0.0",
+    "string-width": "^5.1.2",
+    "strip-ansi": "^7.0.1",
+    "wrap-ansi": "^8.1.0",
     "ws": "8.17.1"
   },
   "devDependencies": {

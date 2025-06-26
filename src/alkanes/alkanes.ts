@@ -173,7 +173,7 @@ export const createExecutePsbt = async ({
   }
 }
 
-async function addInputForUtxo(
+export async function addInputForUtxo(
   psbt: bitcoin.Psbt,
   utxo: FormattedUtxo,
   account: Account,

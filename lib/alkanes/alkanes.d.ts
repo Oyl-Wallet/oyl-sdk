@@ -1,6 +1,7 @@
 /// <reference types="node" />
 /// <reference types="node" />
 import { Provider } from '../provider/provider';
+import * as bitcoin from 'bitcoinjs-lib';
 import { ProtoruneEdict } from 'alkanes/lib/protorune/protoruneedict';
 import { Account, Signer } from '..';
 import { AlkanesPayload } from '../shared/interface';
@@ -27,6 +28,7 @@ export declare const createExecutePsbt: ({ alkanesUtxos, frontendFee, feeAddress
     psbt: string;
     psbtHex: string;
 }>;
+export declare function addInputForUtxo(psbt: bitcoin.Psbt, utxo: FormattedUtxo, account: Account, provider: Provider): Promise<void>;
 export declare const createDeployCommitPsbt: ({ payload, utxos, tweakedPublicKey, account, provider, feeRate, fee, }: {
     payload: AlkanesPayload;
     utxos: FormattedUtxo[];
