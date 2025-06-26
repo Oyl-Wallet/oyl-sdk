@@ -481,13 +481,16 @@ Creates a new pool with the given tokens and amounts
 */
 export const alkaneCreatePool = new AlkanesCommand('create-pool')
   .requiredOption(
-    '-data, --calldata <calldata>',
+    '-data, --data <data>',
     'op code + params to be called on a contract',
-    (value, previous) => {
-      const items = value.split(',')
-      return previous ? previous.concat(items) : items
-    },
-    []
+    (value) => {
+      const parts = value.split(',').map((part) => part.trim())
+      if (parts.length !== 3) {
+        throw new Error('Data must be in format "block,tx,opcode" (e.g., "4,61504,1")')
+      }
+      const [block, tx, opcode] = parts
+      return { block: block.toString(), tx: tx.toString(), opcode: opcode.toString() }
+    }
   )
   .requiredOption(
     '-tokens, --tokens <tokens>',
@@ -514,9 +517,7 @@ export const alkaneCreatePool = new AlkanesCommand('create-pool')
       account: wallet.account,
       provider: wallet.provider,
     })
-
-    const calldata: bigint[] = options.calldata.map((item) => BigInt(item))
-
+    
     const alkaneTokensToPool = options.tokens.map((item) => {
       const [block, tx, amount] = item.split(':').map((part) => part.trim())
       return {
@@ -524,6 +525,18 @@ export const alkaneCreatePool = new AlkanesCommand('create-pool')
         amount: BigInt(amount),
       }
     })
+
+    const calldata = [
+      BigInt(options.data.block),
+      BigInt(options.data.tx),
+      BigInt(options.data.opcode),
+      BigInt(alkaneTokensToPool[0].alkaneId.block),
+      BigInt(alkaneTokensToPool[0].alkaneId.tx),
+      BigInt(alkaneTokensToPool[1].alkaneId.block),
+      BigInt(alkaneTokensToPool[1].alkaneId.tx),
+      BigInt(alkaneTokensToPool[0].amount),
+      BigInt(alkaneTokensToPool[1].amount),
+    ]
 
     console.log(
       await createNewPool({
