@@ -29,9 +29,16 @@ export const DEFAULT_PROVIDER = {
     network: bitcoin.networks.regtest,
     networkType: 'regtest',
   }),
+  oylnet2: new Provider({
+    url: 'https://ladder-chain-sieve.sandshrew.io',
+    projectId: 'regtest',
+    version: 'v2',
+    network: bitcoin.networks.regtest,
+    networkType: 'regtest',
+  }),
   signet: new Provider({
     url: 'https://signet.sandshrew.io',
-    projectId: 'lasereyes',
+    projectId: process.env.SANDSHREW_PROJECT_ID!,
     version: 'v2',
     network: bitcoin.networks.testnet,
     networkType: 'testnet',

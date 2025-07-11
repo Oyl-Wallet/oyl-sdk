@@ -516,7 +516,7 @@ export const alkaneCreatePool = new AlkanesCommand('create-pool')
     })
 
     const calldata: bigint[] = options.calldata.map((item) => BigInt(item))
-
+    console.log('options.calldata', options.calldata)
     console.log('options.tokens', options.tokens)
 
     calldata.push(BigInt(options.tokens[0].split(':')[0]))
@@ -533,6 +533,7 @@ export const alkaneCreatePool = new AlkanesCommand('create-pool')
         amount: BigInt(amount),
       }
     })
+    console.log('alkaneTokensToPool', alkaneTokensToPool)
 
     console.log(
       await createNewPool({
