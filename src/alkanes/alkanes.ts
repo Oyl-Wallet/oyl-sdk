@@ -145,7 +145,13 @@ export const createExecutePsbt = async ({
     const outputsTotal = psbt.txOutputs.reduce((sum, o) => sum + o.value, 0)
 
     let change = inputsTotal - outputsTotal - minerFee
-    if (change < 0) throw new OylTransactionError(Error('Insufficient balance'))
+    if (change < 0) {
+      console.log('change', change)
+      console.log('inputsTotal', inputsTotal)
+      console.log('outputsTotal', outputsTotal)
+      console.log('minerFee', minerFee)
+      throw new OylTransactionError(Error('Insufficient balance'))
+    }
 
     if (change >= Number(MIN_RELAY)) {
       psbt.addOutput({
