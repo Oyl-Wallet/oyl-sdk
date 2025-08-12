@@ -110,6 +110,8 @@ export const createExecutePsbt = async ({
       })
       minerFee = Math.max(newSize * SAT_PER_VBYTE, 250)
       if (gatheredUtxos.totalAmount < minerFee) {
+        console.log('gatheredUtxos.totalAmount', gatheredUtxos.totalAmount)
+        console.log('minerFee', minerFee)
         throw new OylTransactionError(Error('Insufficient balance'))
       }
     }
