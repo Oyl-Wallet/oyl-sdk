@@ -279,7 +279,16 @@ export const formatInputToSign = async ({
   const isSigned = v.finalScriptSig || v.finalScriptWitness
   const lostInternalPubkey = !v.tapInternalKey
   if (!isSigned || lostInternalPubkey) {
-    const tapInternalKey = toXOnly(Buffer.from(senderPublicKey, 'hex'))
+    // If no taproot public key is provided, skip attempting to set taproot fields
+    if (!senderPublicKey || senderPublicKey.length === 0) {
+      return
+    }
+    const keyBuffer = Buffer.from(senderPublicKey, 'hex')
+    // Ensure we have a valid key buffer to avoid constructing p2tr with empty key
+    if (keyBuffer.length === 0) {
+      return
+    }
+    const tapInternalKey = toXOnly(keyBuffer)
     const p2tr = bitcoin.payments.p2tr({
       internalPubkey: tapInternalKey,
       network: network,
