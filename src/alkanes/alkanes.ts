@@ -1308,7 +1308,7 @@ const getRemainingUtxosAfterPsbt = ({
   return { remainingUtxos, remainingAlkanesUtxos };
 }
 
-export const executeFallbackToWitnessProxy = async ({
+export const executeWithBtcWrapUnwrap = async ({
   alkanesUtxos,
   utxos,
   account,
@@ -1318,7 +1318,6 @@ export const executeFallbackToWitnessProxy = async ({
   signer,
   frontendFee,
   feeAddress,
-  witnessProxy,
   frbtcWrapAmount,
   frbtcUnwrapAmount,
   addDieselMint,
@@ -1332,7 +1331,6 @@ export const executeFallbackToWitnessProxy = async ({
   signer: Signer
   frontendFee?: bigint
   feeAddress?: string
-  witnessProxy?: AlkaneId
   frbtcWrapAmount?: number
   frbtcUnwrapAmount?: number
   addDieselMint?: boolean
@@ -1372,61 +1370,19 @@ export const executeFallbackToWitnessProxy = async ({
       ...(addDieselMint ? [DIESEL_MINT_PROTOSTONE] : [])
     ],
   }).encodedRunestone;
-  if (protostone.length > 80) {
-    console.log("OP_RETURN > 80 bytes, attempting to use witness proxy");
-    if (!witnessProxy) {
-      throw new Error('No witness proxy passed in, and OP_RETURN > 80 bytes');
-    }
-    let proxy_calldata = [
-      BigInt(witnessProxy.block),
-      BigInt(witnessProxy.tx),
-      BigInt(0)
-    ]
-    protostone = encodeRunestoneProtostone({
-      protostones: [
-        ProtoStone.message({
-          protocolTag: 1n,
-          edicts: [],
-          pointer: 0,
-          refundPointer: 0,
-          calldata: encipher(proxy_calldata),
-        }),
-        ...(addDieselMint ? [DIESEL_MINT_PROTOSTONE] : [])
-      ],
-    }).encodedRunestone;
-    const payload: AlkanesPayload = {
-      body: encipher(calldata),
-      cursed: false,
-      tags: { contentType: '' },
-    };
-    return await inscribePayloadBulk({
-      protostone,
-      payload,
-      alkanesUtxos: remainingAlkanesUtxos,
-      utxos: remainingUtxos,
-      feeRate,
-      account,
-      signer,
-      provider,
-      frontendFee,
-      feeAddress,
-      frbtcWrapPsbt,
-    })
-  } else {
-    return await execute({
-      alkanesUtxos: remainingAlkanesUtxos,
-      utxos: remainingUtxos,
-      account,
-      protostone,
-      provider,
-      feeRate,
-      signer,
-      frontendFee,
-      feeAddress,
-      frbtcWrapPsbt,
-      frbtcUnwrapAmount,
-    });
-  }
+  return await execute({
+    alkanesUtxos: remainingAlkanesUtxos,
+    utxos: remainingUtxos,
+    account,
+    protostone,
+    provider,
+    feeRate,
+    signer,
+    frontendFee,
+    feeAddress,
+    frbtcWrapPsbt,
+    frbtcUnwrapAmount,
+  });
 }
 
 export const execute = async ({
