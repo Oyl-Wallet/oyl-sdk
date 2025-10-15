@@ -148,7 +148,7 @@ export const createExecutePsbt = async ({
       outputCount: 2 + (feeSatEffective > 0n ? 1 : 0),
     })
 
-    const minFee = Math.max(minTxSize * SAT_PER_VBYTE, 250)
+    const minFee = Math.max(Math.ceil(minTxSize * SAT_PER_VBYTE), 250)
     let minerFee = fee === 0 ? minFee : fee
 
     const totalSpendableUtxos = selectSpendableUtxos(utxos, account.spendStrategy)
@@ -162,7 +162,7 @@ export const createExecutePsbt = async ({
         nonTaprootInputCount: 0,
         outputCount: 2 + (feeSatEffective > 0n ? 1 : 0),
       })
-      minerFee = Math.max(newSize * SAT_PER_VBYTE, 250)
+      minerFee = Math.max(Math.ceil(newSize * SAT_PER_VBYTE), 250)
       if (gatheredUtxos.totalAmount < minerFee) {
         throw new OylTransactionError(Error('Insufficient balance'))
       }
@@ -272,7 +272,7 @@ export const createWrapBtcPsbt = async ({
       outputCount: 3,
     })
 
-    const minFee = Math.max(minTxSize * SAT_PER_VBYTE, 250)
+    const minFee = Math.max(Math.ceil(minTxSize * SAT_PER_VBYTE), 250)
     let minerFee = fee === 0 ? minFee : fee
 
     let gatheredUtxos = selectSpendableUtxos(utxos, account.spendStrategy)
@@ -286,7 +286,7 @@ export const createWrapBtcPsbt = async ({
         nonTaprootInputCount: 0,
         outputCount: 3,
       })
-      minerFee = Math.max(newSize * SAT_PER_VBYTE, 250)
+      minerFee = Math.max(Math.ceil(newSize * SAT_PER_VBYTE), 250)
       if (gatheredUtxos.totalAmount < minerFee) {
         throw new OylTransactionError(Error('Insufficient balance'))
       }
@@ -399,7 +399,7 @@ export const createUnwrapBtcPsbt = async ({
       outputCount: psbt.txOutputs.length + 2, // already includes the subfrost address, 1 more for potential change, 1 for opreturn
     })
 
-    const minFee = Math.max(minTxSize * SAT_PER_VBYTE, 250)
+    const minFee = Math.max(Math.ceil(minTxSize * SAT_PER_VBYTE), 250)
     let minerFee = fee === 0 ? minFee : fee
 
     let gatheredUtxos = selectSpendableUtxos(utxos, account.spendStrategy)
@@ -412,7 +412,7 @@ export const createUnwrapBtcPsbt = async ({
         nonTaprootInputCount: 0,
         outputCount: psbt.txOutputs.length + 1,
       })
-      minerFee = Math.max(newSize * SAT_PER_VBYTE, 250)
+      minerFee = Math.max(Math.ceil(newSize * SAT_PER_VBYTE), 250)
       if (gatheredUtxos.totalAmount < minerFee) {
         throw new OylTransactionError(Error('Insufficient balance'))
       }
@@ -735,7 +735,7 @@ export const actualDeployCommitFee = async ({
     provider,
   })
 
-  const wasmDeploySize = getVSize(Buffer.from(payload.body)) * feeRate;
+  const wasmDeploySize = Math.ceil(getVSize(Buffer.from(payload.body)) * feeRate);
   const deployRevealFee = finalFee + wasmDeploySize * 2 + 546; //very conservative value for deployRevealFee. the excess will be refunded
 
   return { fee: finalFee, deployRevealFee, vsize }
@@ -793,7 +793,7 @@ export const createDeployCommitPsbt = async ({
       nonTaprootInputCount: 0,
       outputCount: 2 + (feeSatEffective > 0n ? 1 : 0),
     })
-    const calculatedFee = minFee * feeRate < 250 ? 250 : minFee * feeRate
+    const calculatedFee = minFee * feeRate < 250 ? 250 : Math.ceil(minFee * feeRate)
     let commitFee = fee ? fee : calculatedFee
 
     let psbt = new bitcoin.Psbt({ network: provider.network })
@@ -811,7 +811,7 @@ export const createDeployCommitPsbt = async ({
       network: provider.network,
     })
 
-    const wasmDeploySize = getVSize(Buffer.from(payload.body)) * feeRate
+    const wasmDeploySize = Math.ceil(getVSize(Buffer.from(payload.body)) * feeRate)
     let revealTxFee = deployRevealFee ? deployRevealFee + inscriptionSats : commitFee + wasmDeploySize + inscriptionSats;
     let totalFee = revealTxFee + commitFee + Number(feeSatEffective);
     let gatheredUtxos = findXAmountOfSats(
@@ -825,7 +825,7 @@ export const createDeployCommitPsbt = async ({
         nonTaprootInputCount: 0,
         outputCount: 2 + (feeSatEffective > 0n ? 1 : 0),
       })
-      commitFee = txSize * feeRate < 250 ? 250 : txSize * feeRate
+      commitFee = txSize * feeRate < 250 ? 250 : Math.ceil(txSize * feeRate)
       revealTxFee = deployRevealFee ? deployRevealFee + inscriptionSats : commitFee + wasmDeploySize + inscriptionSats;
       totalFee = commitFee + revealTxFee + Number(feeSatEffective);
 
@@ -1751,7 +1751,7 @@ export const createTransactReveal = async ({
       payload
     })
 
-    const revealTxBaseFee = minFee * feeRate < 250 ? 250 : minFee * feeRate
+    const revealTxBaseFee = minFee * feeRate < 250 ? 250 : Math.ceil(minFee * feeRate)
     let revealTxFee = fee === 0 ? revealTxBaseFee : fee
     const commitTxOutput = commitPsbt.txOutputs[0]
 
