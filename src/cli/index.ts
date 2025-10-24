@@ -1,5 +1,6 @@
 import { Command } from 'commander'
 import { collectibleSend } from './collectible'
+import { brc20ProgDeployContract } from './brc20-prog'
 
 import {
   alkaneExecute,
@@ -130,5 +131,11 @@ program.addCommand(brc20Command)
 program.addCommand(collectibleCommand)
 program.addCommand(runeCommand)
 program.addCommand(providerCommand)
+
+const brc20ProgCommand = new Command('brc20-prog')
+  .description('Functions for brc20-prog')
+  .addCommand(brc20ProgDeployContract)
+
+program.addCommand(brc20ProgCommand)
 
 program.parse(process.argv)
