@@ -8,11 +8,6 @@ export declare const inscribeJson: ({ json, utxos, account, provider, feeRate, s
     feeRate?: number;
     signer: Signer;
 }) => Promise<{
-    commitTx: string;
-    txId: string;
-    rawTx: string;
-    size: any;
-    weight: any;
-    fee: number;
-    satsPerVByte: string;
+    commitTxId: string;
+    revealTxId: string;
 }>;

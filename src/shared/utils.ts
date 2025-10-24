@@ -368,10 +368,10 @@ export const createInscriptionScript = (
   const mimeType = 'text/plain;charset=utf-8'
   const textEncoder = new TextEncoder()
   const mimeTypeBuff = Buffer.from(textEncoder.encode(mimeType))
-  const contentBuff = Buffer.from(textEncoder.encode(content))
   const markerBuff = Buffer.from(textEncoder.encode('ord'))
+  const contentChunks = getWitnessDataChunk(content)
 
-  return [
+  const script = [
     pubKey,
     bitcoin.opcodes.OP_CHECKSIG,
     bitcoin.opcodes.OP_0,
@@ -381,9 +381,15 @@ export const createInscriptionScript = (
     1,
     mimeTypeBuff,
     bitcoin.opcodes.OP_0,
-    contentBuff,
-    bitcoin.opcodes.OP_ENDIF,
   ]
+
+  for (const chunk of contentChunks) {
+    script.push(chunk)
+  }
+
+  script.push(bitcoin.opcodes.OP_ENDIF)
+
+  return script
 }
 
 export function encodeToBase26(inputString: string): string {
