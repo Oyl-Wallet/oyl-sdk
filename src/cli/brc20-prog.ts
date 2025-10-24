@@ -28,7 +28,8 @@ export const brc20ProgDeployContract = new Command('deploy-contract')
     }
 
     ZstdCodec.run(zstd => {
-      const compressed = zstd.compress(bytecode);
+            const simple = new zstd.Simple();
+      const compressed = simple.compress(bytecode);
       const prefixed = Buffer.concat([Buffer.from([0x02]), compressed]);
       const base64 = prefixed.toString('base64');
 
