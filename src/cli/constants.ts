@@ -30,8 +30,8 @@ export const DEFAULT_PROVIDER = {
     networkType: 'regtest',
   }),
   oylnet: new Provider({
-    url: 'https://oylnet.oyl.gg',
-    projectId: 'regtest',
+    url: 'https://regtest.subfrost.io',
+    projectId: 'lasereyes',
     version: 'v2',
     network: bitcoin.networks.regtest,
     networkType: 'regtest',
