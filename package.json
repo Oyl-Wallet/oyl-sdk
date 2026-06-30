@@ -50,7 +50,7 @@
     "@magiceden-oss/runestone-lib": "1.0.2",
     "@sadoprotocol/ordit-sdk": "3.0.0",
     "@scure/btc-signer": "1.5.0",
-    "alkanes": "git+https://github.com/kungfuflex/alkanes.git",
+    "alkanes": "git+https://github.com/kungfuflex/alkanes.git#2b196f9c9a2123146c0153957c548eb88d5126a3",
     "bignumber.js": "9.1.2",
     "bip32": "4.0.0",
     "bip322-js": "2.0.0",
