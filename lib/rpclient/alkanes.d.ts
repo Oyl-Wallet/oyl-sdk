@@ -19,6 +19,7 @@ export declare class AlkanesRpc {
     _metashrewCall(method: string, params?: any[]): Promise<any>;
     _call(method: string, params?: any[]): Promise<any>;
     metashrewHeight(): Promise<AlkanesResponse>;
+    sequence(): Promise<AlkanesResponse>;
     getAlkanesByHeight({ height, protocolTag, }: {
         height: number;
         protocolTag: string;
